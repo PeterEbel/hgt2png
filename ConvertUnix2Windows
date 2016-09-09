@@ -1,0 +1,1 @@
+awk '{ sub("$", ""); print }' unixfile.txt > windowsfile.txt

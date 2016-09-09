@@ -1,0 +1,1 @@
+gcc hgt2png.c -o test.exe -std=gnu99 /usr/lib/libpng.so
