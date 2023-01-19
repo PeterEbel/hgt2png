@@ -314,7 +314,7 @@ int main(int argc, const char *argv[])
 
     strcpy(OutputHeightmapFile, fi[k].szFilename);
     OutputHeightmapFile[strlen(OutputHeightmapFile) - 4] = '\0';
-    strcat(OutputHeightmapFile, "_HGT.PNG");
+    strcat(OutputHeightmapFile, ".PNG");
     
     WritePNG(OutputHeightmapFile, fi[k].iWidth, fi[k].iHeight);
 
