@@ -1,3 +1,17 @@
+/*
+ *********************************************************************************
+ *** Project:            Heightmap Generator
+ *** Creation Date:      2016-01-01
+ *** Author:             Peter Ebel (peter.ebel@outlook.de)
+ *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
+ *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 /usr/lib/libpng.so
+ *** Modification Log:  
+ *** Version Date        Modified By	 Modification Details
+ *** ------------------------------------------------------------------------------
+ *** 1.0.0   2016-01-01  Ebel          Initial creation of the script
+ **********************************************************************************
+*/
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
