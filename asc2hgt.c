@@ -1,3 +1,17 @@
+/*
+ *********************************************************************************
+ *** Project:            HGT File Generator
+ *** Creation Date:      2016-01-01
+ *** Author:             Peter Ebel (peter.ebel@outlook.de)
+ *** Objective:          Conversion of binary ASCII files into HGT Heightmaps
+ *** Compile:            gcc asc2hgt.c -o asc2hgt
+ *** Modification Log:  
+ *** Version Date        Modified By   Modification Details
+ *** ------------------------------------------------------------------------------
+ *** 1.0.0   2016-01-01  Ebel          Initial creation of the script
+ **********************************************************************************
+*/
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -42,19 +56,19 @@ int main(int argc, const char *argv[])
 
     switch(i) {
       case 0:
-        strcpy(TempBuffer, &ReadBuffer[6]);
+        strcpy(TempBuffer, &ReadBuffer[7]);
         md.iCols = atoi(TempBuffer);
         break;
       case 1:
-        strcpy(TempBuffer, &ReadBuffer[6]);
+        strcpy(TempBuffer, &ReadBuffer[5]);
         md.iRows = atoi(TempBuffer);
         break;
       case 2:
-        strcpy(TempBuffer, &ReadBuffer[10]);
+        strcpy(TempBuffer, &ReadBuffer[8]);
         md.lXLLCenter = atoi(TempBuffer);
         break;
       case 3:
-        strcpy(TempBuffer, &ReadBuffer[10]);
+        strcpy(TempBuffer, &ReadBuffer[8]);
         md.lYLLCenter = atoi(TempBuffer);
         break;
       case 4:
@@ -62,7 +76,7 @@ int main(int argc, const char *argv[])
         md.iCellSize = atoi(TempBuffer);
         break;
       case 5:
-        strcpy(TempBuffer, &ReadBuffer[13]);
+        strcpy(TempBuffer, &ReadBuffer[12]);
         md.iNoDataValue = atoi(TempBuffer);
         break;
       default:

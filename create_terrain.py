@@ -32,19 +32,19 @@ def main():
     terrain = io.open('terrain.txt', 'w+')
 
   # write header 
-    terrain.writelines('_COLS=' + str(cols) + '\n')
-    terrain.writelines('_ROWS=' + str(cols) + '\n')
-    terrain.writelines('_CENTER_X=' + str(center_x) + '\n')
-    terrain.writelines('_CENTER_Y=' + str(center_y) + '\n')
-    terrain.writelines('_CELLSIZ=' + str(cell_size) + '\n')
-    terrain.writelines('_NODATAVALUE=' + str(no_value) + '\n')
+    terrain.writelines('COLUMS=' + str(cols) + '\n')
+    terrain.writelines('ROWS=' + str(cols) + '\n')
+    terrain.writelines('CENTERX=' + str(center_x) + '\n')
+    terrain.writelines('CENTERY=' + str(center_y) + '\n')
+    terrain.writelines('CELLSIZE=' + str(cell_size) + '\n')
+    terrain.writelines('NODATAVALUE=' + str(no_value) + '\n')
 
     for _ in range(rows):
-        heights = [(str(fake.random.randint(1000, 3000)) + ' ') for i in range(3601)]
+        heights = [(str(fake.random.randint(2400, 3000)) + ' ') for i in range(3601)]
         heights.append('\n')
         terrain.writelines(heights)
     terrain.close()
-    logfile.close()
+  # logfile.close()
 
 if __name__ == '__main__':
     main()
