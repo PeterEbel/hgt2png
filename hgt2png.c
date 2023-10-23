@@ -101,7 +101,7 @@ int main(int argc, const char *argv[])
 
   Zoning *z;
 
-  fprintf(stderr, "\nhgt2png Converter v1.0 (C) 2016\n");
+  fprintf(stderr, "\nhgt2png Converter v1.0.1 (C) 2023\n");
 
   if (argc == 1)  
   {
@@ -330,13 +330,13 @@ int main(int argc, const char *argv[])
 
     strcpy(OutputHeightmapFile, fi[k].szFilename);
     OutputHeightmapFile[strlen(OutputHeightmapFile) - 4] = '\0';
-    strcat(OutputHeightmapFile, ".PNG");
+    strcat(OutputHeightmapFile, ".png");
     
     WritePNG(OutputHeightmapFile, fi[k].iWidth, fi[k].iHeight);
 
     strcpy(OutputZoningFile, fi[k].szFilename);
     OutputZoningFile[strlen(OutputZoningFile) - 4] = '\0';
-    strcat(OutputZoningFile, "_ZON.PNG");
+    strcat(OutputZoningFile, "_zon.png");
       
 //  WriteZoningPNG(OutputZoningFile, fi[k].iWidth, fi[k].iHeight);
 
