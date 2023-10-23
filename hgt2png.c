@@ -4,11 +4,13 @@
  *** Creation Date:      2016-01-01
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
- *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 /usr/lib/libpng.so
+ *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 -lpng
+ *** Dpendencies:        libpng: sudo apt-get install libpng-dev
  *** Modification Log:  
  *** Version Date        Modified By   Modification Details
  *** ------------------------------------------------------------------------------
  *** 1.0.0   2016-01-01  Ebel          Initial creation of the script
+ *** 1.0.1   2023-10-23  Ebel          Link switch changed to -lpng
  **********************************************************************************
 */
 
