@@ -437,7 +437,6 @@ void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
   image.height = _iHeight;
 
   fprintf(stderr, "Info: Writing %s\n", szFilename);
-//fprintf(stderr, "Info: Resolution %d x %d\n", image.width, image.height);
   if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) PixelData, 0/*row_stride*/, NULL/*colormap*/))
   {
     fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
