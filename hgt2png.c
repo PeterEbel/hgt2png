@@ -1,11 +1,11 @@
 /*
  *********************************************************************************
- *** Project:            Heightm  fprintf(stderr, "\nhgt2png Converter v1.1.0 (C) 2025 - with Procedural Detail Generation\n");p Generator
+ *** Project:            Heightmap Generator
  *** Creation Date:      2016-01-01
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
  *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 -lpng -lm
- *** Dpendencies:        libpng: sudo apt-get install libpng-dev
+ *** Dependencies:       libpng: sudo apt-get install libpng-dev
  *** Modification Log:  
  *** Version Date        Modified By   Modification Details
  *** ------------------------------------------------------------------------------
@@ -47,21 +47,8 @@ typedef struct tag_RGB {
   unsigned char b;
 } RGB, *pRGB;
 
-typedef struct tag_Gradient {
-  int iMinElevation;
-  int iMaxElevation;
-  RGB StartColor;
-  RGB EndColor;
-} Gradient, *pGradient;
-
-typedef struct tag_Zoning {
-  int iNumberOfGradients;
-  Gradient gradient;
-} Zoning, *pZoning;
-
 typedef struct tag_FileInfoHGT {
   char szFilename[_MAX_PATH];
-  char szZoningFilename[_MAX_PATH];
   short int iWidth;
   short int iHeight;
   short int iMinElevation;
@@ -71,11 +58,8 @@ typedef struct tag_FileInfoHGT {
 
 FileInfo *fi;
 RGB *PixelData;
-RGB *ZoningData;
 
 void WritePNG(const char *, short int, short int);
-void WriteZoningPNG(const char *, short int, short int);
-void CreateZoning(Zoning *, int);
 
 // Neue Funktionen für Procedural Detail Generation
 float SimpleNoise(int x, int y, int seed);
@@ -89,13 +73,12 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
 const int HGT_TYPE_30 = 1201;
 const int HGT_TYPE_90 = 3601;
 const int HGT_TYPE_UNKNOWN = -1;
-const int HGT_TYPE_30_SIZE = 1201 * 1201 * sizeof(short int);
-const int HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(short int);
+const unsigned long HGT_TYPE_30_SIZE = 1201 * 1201 * sizeof(short int);
+const unsigned long HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(short int);
 
 int iHGTType;
 
 char OutputHeightmapFile[_MAX_PATH];
-char OutputZoningFile[_MAX_PATH];
 
 short int iOverallMinElevation;
 short int iOverallMaxElevation;
@@ -114,11 +97,8 @@ int main(int argc, const char *argv[])
   short int *iElevationData;
   int iNumIntRead;
   int iNumFilesToConvert = 0;
-  int iNumberOfZonings = 3;
 
-  Zoning *z;
-
-  fprintf(stderr, "\nhgt2png Converter v1.0.1 (C) 2023\n");
+  fprintf(stderr, "\nhgt2png Converter v1.1.0 (C) 2025 - with Procedural Detail Generation\n");
 
   if (argc == 1)  
   {
@@ -129,7 +109,11 @@ int main(int argc, const char *argv[])
   if ((strstr(argv[1], "HGT") != NULL) || strstr(argv[1], "hgt") != NULL)
   {
     fprintf(stderr, "INFO: Single-File Mode\n");
-    sCurrentFilename[0] = (char *) malloc(strlen(argv[1]));
+    sCurrentFilename[0] = (char *) malloc(strlen(argv[1]) + 1);
+    if (sCurrentFilename[0] == NULL) {
+      fprintf(stderr, "Error: Can't allocate memory for filename\n");
+      return 1;
+    }
     strcpy(sCurrentFilename[0], argv[1]);
     iNumFilesToConvert = 1;
   }
@@ -141,13 +125,37 @@ int main(int argc, const char *argv[])
       return 1;
     }
 
-    while (!feof(FileList))
+    while (!feof(FileList) && f < _MAX_FILES - 1)
     {
-      fgets(sBuffer,sizeof(sBuffer), FileList);
-      sCurrentFilename[f] = (char *) malloc(strlen(sBuffer));
-      strcpy(sCurrentFilename[f], sBuffer);
-      sCurrentFilename[f][strlen(sCurrentFilename[f]) - 1] = '\0';
-      f++;	
+      if (fgets(sBuffer, sizeof(sBuffer), FileList) != NULL)
+      {
+        // Entferne Newline und prüfe auf leere Zeilen
+        size_t len = strlen(sBuffer);
+        if (len > 0 && sBuffer[len - 1] == '\n') {
+          sBuffer[len - 1] = '\0';
+          len--;
+        }
+        
+        // Überspringe leere Zeilen
+        if (len > 0) {
+          sCurrentFilename[f] = (char *) malloc(len + 1);
+          if (sCurrentFilename[f] == NULL) {
+            fprintf(stderr, "Error: Can't allocate memory for filename %d\n", f);
+            // Cleanup bereits allokierter Filenames
+            for (int cleanup = 0; cleanup < f; cleanup++) {
+              free(sCurrentFilename[cleanup]);
+            }
+            fclose(FileList);
+            return 1;
+          }
+          strcpy(sCurrentFilename[f], sBuffer);
+          f++;
+        }
+      }
+    }
+    
+    if (f >= _MAX_FILES - 1) {
+      fprintf(stderr, "WARNING: Maximum number of files (%d) reached. Some files may be skipped.\n", _MAX_FILES - 1);
     }
 
     fclose(FileList);
@@ -161,14 +169,6 @@ int main(int argc, const char *argv[])
     fprintf(stderr, "Error: Can't allocate FileInfo array\n");
     return 1;
   }
-
-  if ((z = (Zoning *) malloc(iNumberOfZonings * sizeof(struct tag_Zoning))) == NULL)
-  {
-    fprintf(stderr, "Error: Can't allocate Zoning array\n");
-    return 1;
-  }
-
-  CreateZoning(z, iNumberOfZonings);
 
   struct stat buf;
 
@@ -233,7 +233,7 @@ int main(int argc, const char *argv[])
       return 1;
     }
 
-    if ((iNumIntRead = fread(iElevationData, 1, fi[i].ulFilesize, InFile)) != fi[i].ulFilesize)
+    if ((iNumIntRead = fread(iElevationData, 1, fi[i].ulFilesize, InFile)) != (int)fi[i].ulFilesize)
     {
       fprintf(stderr, "Error: Can't load elevation data\n");
       fclose(InFile);
@@ -276,7 +276,7 @@ int main(int argc, const char *argv[])
       return 1;
     }
 
-    if ((iNumIntRead = fread(iElevationData, 1, fi[k].ulFilesize, InFile)) != fi[k].ulFilesize)
+    if ((iNumIntRead = fread(iElevationData, 1, fi[k].ulFilesize, InFile)) != (int)fi[k].ulFilesize)
     {
       fprintf(stderr, "Filename: %s\n", fi[k].szFilename);
       fprintf(stderr, "Filesize: %d\n", (unsigned int) fi[k].ulFilesize);
@@ -292,7 +292,7 @@ int main(int argc, const char *argv[])
     fprintf(stderr, "INFO: Adding procedural detail to %s...\n", fi[k].szFilename);
     
     // Byte-Swapping vor der Detail-Generation durchführen
-    for (int pre = 0; pre < (fi[k].ulFilesize) / 2; pre++)
+    for (unsigned long pre = 0; pre < (fi[k].ulFilesize) / 2; pre++)
     {
       if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
       {
@@ -319,19 +319,23 @@ int main(int argc, const char *argv[])
     }
     #endif
 
-    if ((ZoningData = (RGB *) malloc(fi[k].ulFilesize * sizeof(struct tag_RGB))) == NULL)
-    {
-      fprintf(stderr, "Error: Can't allocate zoning data block.\n");
-      return 1;
-    }
-
     if ((PixelData = (RGB *) malloc(fi[k].ulFilesize * sizeof(struct tag_RGB))) == NULL)
     {
       fprintf(stderr, "Error: Can't allocate pixel data block.\n");
+      if (iElevationData != NULL) {
+        free(iElevationData);
+      }
+      // Cleanup bereits verarbeiteter Dateien
+      for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+        if (sCurrentFilename[cleanup] != NULL) {
+          free(sCurrentFilename[cleanup]);
+        }
+      }
+      free(fi);
       return 1;
     }
      
-    for (int m = 0; m < (fi[k].ulFilesize) / 2; m++)
+    for (unsigned long m = 0; m < (fi[k].ulFilesize) / 2; m++)
     {
       #if !ENABLE_PROCEDURAL_DETAIL
       // Byte-Swapping nur wenn keine Procedural Details verwendet werden
@@ -345,39 +349,6 @@ int main(int argc, const char *argv[])
       {
         PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
       }
-       
-      //Zoning
-     
-      ZoningData[m].r = PixelData[m].r;
-      ZoningData[m].g = PixelData[m].g;
-      ZoningData[m].b = PixelData[m].b;
-     
-      for (int g = 0; g < z->iNumberOfGradients; g++)
-      {
-        if ((iElevationData[m] >= z[g].gradient.iMinElevation) && (iElevationData[m] <= z[g].gradient.iMaxElevation))
-        {
-          switch (g)
-          {
-            case 0:
-              ZoningData[m].r = z[0].gradient.StartColor.r;
-              ZoningData[m].g = z[0].gradient.StartColor.g;
-              ZoningData[m].b = z[0].gradient.StartColor.b;
-              break;
-            case 1:
-              ZoningData[m].r = z[1].gradient.StartColor.r;
-              ZoningData[m].g = z[1].gradient.StartColor.g;
-              ZoningData[m].b = z[1].gradient.StartColor.b;
-              break;
-            case 2:
-              ZoningData[m].r = z[2].gradient.StartColor.r;
-              ZoningData[m].g = z[2].gradient.StartColor.g;
-              ZoningData[m].b = z[2].gradient.StartColor.b;
-              break;
-            default:
-              break;
-          }
-        }
-      }
     }
 
     strcpy(OutputHeightmapFile, fi[k].szFilename);
@@ -386,21 +357,10 @@ int main(int argc, const char *argv[])
     
     WritePNG(OutputHeightmapFile, fi[k].iWidth, fi[k].iHeight);
 
-    strcpy(OutputZoningFile, fi[k].szFilename);
-    OutputZoningFile[strlen(OutputZoningFile) - 4] = '\0';
-    strcat(OutputZoningFile, "_zon.png");
-      
-//  WriteZoningPNG(OutputZoningFile, fi[k].iWidth, fi[k].iHeight);
-
   //Free allocated memory  
     if (iElevationData != NULL)
     {
       free(iElevationData);
-    }
-
-    if (ZoningData != NULL)
-    {
-      free(ZoningData);
     }
 
     if (PixelData != NULL)
@@ -410,15 +370,22 @@ int main(int argc, const char *argv[])
 
   }
 
+  // Cleanup allocated memory
   free(fi);
+  
+  // Free sCurrentFilename arrays (both Single-File and Filelist mode)
+  for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+    if (sCurrentFilename[cleanup] != NULL) {
+      free(sCurrentFilename[cleanup]);
+    }
+  }
+  
   fprintf(stderr, "Info: Done\n");
 
 }
 
 void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
 {
-
-  int result;
   png_image image; 
 
   memset(&image, 0, sizeof image);
@@ -430,74 +397,13 @@ void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
 
   fprintf(stderr, "Info: Writing %s\n", szFilename);
 //fprintf(stderr, "Info: Resolution %d x %d\n", image.width, image.height);
-  if (png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) PixelData, 0/*row_stride*/, NULL/*colormap*/))
+  if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) PixelData, 0/*row_stride*/, NULL/*colormap*/))
   {
-    result = 0;
-  }
-  else
     fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+  }
 
   png_image_free(&image);
 
-}
-
-void WriteZoningPNG(const char *szFilename, short int _iWidth, short int _iHeight)
-{
-
-  int result;
-  png_image image; 
-
-  memset(&image, 0, sizeof image);
-
-  image.version = PNG_IMAGE_VERSION;
-  image.format = PNG_FORMAT_RGB;
-  image.width = _iWidth;
-  image.height = _iHeight;
-
-  fprintf(stderr, "Info: Writing %s\n", szFilename);
-  
-  if (png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) ZoningData, 0/*row_stride*/, NULL/*colormap*/))
-  {
-    result = 0;
-  }
-  else
-    fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
-
-//free(ZoningData);
-  png_image_free(&image);
-
-}
-
-void CreateZoning(Zoning *z, int _iNumberOfZonings)
-{
-  z[0].iNumberOfGradients = _iNumberOfZonings;
-
-  z[0].gradient.iMinElevation = 0;
-  z[0].gradient.iMaxElevation = 1000;
-  z[0].gradient.StartColor.r = (char) 255;
-  z[0].gradient.StartColor.g = 0;
-  z[0].gradient.StartColor.b = 0;
-  z[0].gradient.EndColor.r = 0;
-  z[0].gradient.EndColor.g = (char) 255;
-  z[0].gradient.EndColor.b = 0;
- 
-  z[1].gradient.iMinElevation = 1001;
-  z[1].gradient.iMaxElevation = 2000;
-  z[1].gradient.StartColor.r = 0;
-  z[1].gradient.StartColor.g = (char) 255;
-  z[1].gradient.StartColor.b = 0;
-  z[1].gradient.EndColor.r = 0;
-  z[1].gradient.EndColor.g = 0;
-  z[1].gradient.EndColor.b = (char) 255;
-
-  z[2].gradient.iMinElevation = 2001;
-  z[2].gradient.iMaxElevation = 5000;
-  z[2].gradient.StartColor.r = 0;
-  z[2].gradient.StartColor.g = 0;
-  z[2].gradient.StartColor.b = (char) 255;
-  z[2].gradient.EndColor.r = 0;
-  z[2].gradient.EndColor.g = 0;
-  z[2].gradient.EndColor.b = 0;
 }
 
 // NEUE FUNKTIONEN FÜR PROCEDURAL DETAIL GENERATION
