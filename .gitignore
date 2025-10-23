@@ -4,4 +4,6 @@ venv/
 terrain.txt
 *.HGT
 *.PNG
+*.hgt
+*.png
 hgt2png
