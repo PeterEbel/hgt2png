@@ -11,7 +11,7 @@
  *** ------------------------------------------------------------------------------
  *** 1.0.0   2016-01-01  Ebel          Initial creation of the script
  *** 1.0.1   2023-10-23  Ebel          Link switch changed to -lpng
- *** 1.1.0   2025-10-23  Ebel          Added Procedural Detail Generation
+ *** 1.1.0   2025-10-23  Ebel          Added Procedural Detail Generation and multithreading support
  **********************************************************************************
 */
 
