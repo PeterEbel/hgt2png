@@ -4,7 +4,7 @@
  *** Creation Date:      2016-01-01
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
- *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 -lpng -lm
+ *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 -lpng -lm -Wall -Wextra
  *** Dependencies:       libpng: sudo apt-get install libpng-dev
  *** Modification Log:  
  *** Version Date        Modified By   Modification Details
@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
 #include <math.h>
 #include <getopt.h>
 
@@ -46,12 +48,25 @@ typedef struct {
   int verbose;
   int showHelp;
   int showVersion;
+  int numThreads;  // Neue Option für Thread-Anzahl
 } ProgramOptions;
+
+// Threading-Strukturen für Parallelisierung
+typedef struct {
+  int fileIndex;
+  struct tag_FileInfoHGT* fileInfo;  // Verwende den vollständigen Strukturnamen
+  ProgramOptions* opts;
+  int* globalResult;        // Shared result status
+  pthread_mutex_t* outputMutex;  // Mutex für thread-sichere Ausgabe
+  int* filesProcessed;      // Shared counter für Fortschrittsanzeige
+  int totalFiles;           // Gesamtanzahl Dateien
+} ThreadData;
 
 // Standard-Werte
 #define DEFAULT_SCALE_FACTOR 3
 #define DEFAULT_DETAIL_INTENSITY 15.0f
 #define DEFAULT_NOISE_SEED 12345
+#define DEFAULT_NUM_THREADS 4
 
 typedef int errno_t;
 
@@ -89,6 +104,11 @@ float CalculateLocalSlope(short int* data, int width, int height, float x, float
 float GetHeightTypeFactor(short int height);
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed);
+
+// Neue Funktionen für Parallelisierung
+void* processFileWorker(void* arg);
+int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
+int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
 
 const int HGT_TYPE_30 = 1201;
 const int HGT_TYPE_90 = 3601;
@@ -303,112 +323,18 @@ int main(int argc, char *argv[])
     fclose(InFile);
   }
 
-  for (int k = 0; k < iNumFilesToConvert; k++)
-  {
-    if ((InFile = fopen(fi[k].szFilename, "rb")) == NULL) {
-      fprintf(stderr, "Error: Can't open input file %s\n", fi[k].szFilename);
-      return 1;
-    }
-
-    if ((iElevationData = (short *) malloc(fi[k].ulFilesize)) == NULL)
-    {
-      fprintf(stderr, "Error: Can't allocate elevation data block %s\n", fi[k].szFilename);
-      fclose(InFile);
-      return 1;
-    }
-
-    if ((iNumIntRead = fread(iElevationData, 1, fi[k].ulFilesize, InFile)) != (int)fi[k].ulFilesize)
-    {
-      fprintf(stderr, "Filename: %s\n", fi[k].szFilename);
-      fprintf(stderr, "Filesize: %d\n", (unsigned int) fi[k].ulFilesize);
-      fprintf(stderr, "Error: Can't load elevation data 2\n");
-      fclose(InFile);
-      return 1;
-    } 
-
-    fclose(InFile);
-
-    // PROCEDURAL DETAIL GENERATION - NEU EINGEFÜGT
-    if (opts.enableDetail) {
-      if (opts.verbose) fprintf(stderr, "INFO: Adding procedural detail to %s...\n", fi[k].szFilename);
-      
-      // Byte-Swapping vor der Detail-Generation durchführen
-      for (unsigned long pre = 0; pre < (fi[k].ulFilesize) / 2; pre++)
-      {
-        if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
-        {
-          iElevationData[pre] = (short)(((iElevationData[pre] & 0xff) << 8) | ((iElevationData[pre] & 0xff00) >> 8));
-        }
-        if (iElevationData[pre] < 0) iElevationData[pre] = 0;
-        if (iElevationData[pre] > _MAX_HEIGHT) iElevationData[pre] = _MAX_HEIGHT;
-      }
-      
-      // Procedural Detail hinzufügen
-      short int* detailedData = AddProceduralDetail(iElevationData, fi[k].iWidth, fi[k].iHeight, 
-                                                    opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
-      
-      if (detailedData) {
-        free(iElevationData);
-        iElevationData = detailedData;
-        fi[k].iWidth *= opts.scaleFactor;
-        fi[k].iHeight *= opts.scaleFactor;
-        fi[k].ulFilesize = fi[k].iWidth * fi[k].iHeight * sizeof(short int);
-        
-        if (opts.verbose) fprintf(stderr, "INFO: Enhanced resolution: %dx%d pixels\n", fi[k].iWidth, fi[k].iHeight);
-      } else {
-        fprintf(stderr, "WARNING: Could not add procedural detail, using original data\n");
+  // PARALLELISIERTE BATCH-VERARBEITUNG - Ersetzt die ursprüngliche Schleife
+  int processingResult = processFilesParallel(fi, iNumFilesToConvert, opts);
+  
+  if (processingResult != 0) {
+    // Cleanup bei Fehler
+    for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+      if (sCurrentFilename[cleanup] != NULL) {
+        free(sCurrentFilename[cleanup]);
       }
     }
-
-    if ((PixelData = (RGB *) malloc(fi[k].ulFilesize * sizeof(struct tag_RGB))) == NULL)
-    {
-      fprintf(stderr, "Error: Can't allocate pixel data block.\n");
-      if (iElevationData != NULL) {
-        free(iElevationData);
-      }
-      // Cleanup bereits verarbeiteter Dateien
-      for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
-        if (sCurrentFilename[cleanup] != NULL) {
-          free(sCurrentFilename[cleanup]);
-        }
-      }
-      free(fi);
-      return 1;
-    }
-     
-    for (unsigned long m = 0; m < (fi[k].ulFilesize) / 2; m++)
-    {
-      if (!opts.enableDetail) {
-        // Byte-Swapping nur wenn keine Procedural Details verwendet werden
-        if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
-        {
-          iElevationData[m] = (short)(((iElevationData[m] & 0xff) << 8) | ((iElevationData[m] & 0xff00) >> 8));
-        }
-      }
-
-      if (iOverallMaxElevation != 0)
-      {
-        PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
-      }
-    }
-
-    strcpy(OutputHeightmapFile, fi[k].szFilename);
-    OutputHeightmapFile[strlen(OutputHeightmapFile) - 4] = '\0';
-    strcat(OutputHeightmapFile, ".png");
-    
-    WritePNG(OutputHeightmapFile, fi[k].iWidth, fi[k].iHeight);
-
-  //Free allocated memory  
-    if (iElevationData != NULL)
-    {
-      free(iElevationData);
-    }
-
-    if (PixelData != NULL)
-    {
-      free(PixelData);
-    }
-
+    free(fi);
+    return processingResult;
   }
 
   // Cleanup allocated memory
@@ -444,6 +370,259 @@ void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
 
   png_image_free(&image);
 
+}
+
+// PARALLELISIERUNG - Worker-Thread Funktion
+void* processFileWorker(void* arg) {
+    ThreadData* data = (ThreadData*)arg;
+    struct tag_FileInfoHGT* fi = &data->fileInfo[data->fileIndex];
+    ProgramOptions* opts = data->opts;
+    
+    FILE* InFile = NULL;
+    short* iElevationData = NULL;
+    RGB* PixelData = NULL;
+    int iNumIntRead;
+    char OutputHeightmapFile[256];
+    
+    // Thread-sichere Fortschrittsanzeige
+    pthread_mutex_lock(data->outputMutex);
+    if (opts->verbose) {
+        fprintf(stderr, "INFO: Processing file %d/%d: %s\n", 
+                data->fileIndex + 1, data->totalFiles, fi->szFilename);
+    }
+    pthread_mutex_unlock(data->outputMutex);
+    
+    // Datei öffnen
+    if ((InFile = fopen(fi->szFilename, "rb")) == NULL) {
+        pthread_mutex_lock(data->outputMutex);
+        fprintf(stderr, "Error: Can't open input file %s\n", fi->szFilename);
+        pthread_mutex_unlock(data->outputMutex);
+        *(data->globalResult) = 1;
+        return NULL;
+    }
+
+    // Speicher für Elevation Data allokieren
+    if ((iElevationData = (short*)malloc(fi->ulFilesize)) == NULL) {
+        pthread_mutex_lock(data->outputMutex);
+        fprintf(stderr, "Error: Can't allocate elevation data block %s\n", fi->szFilename);
+        pthread_mutex_unlock(data->outputMutex);
+        fclose(InFile);
+        *(data->globalResult) = 1;
+        return NULL;
+    }
+
+    // Elevation Data lesen
+    if ((iNumIntRead = fread(iElevationData, 1, fi->ulFilesize, InFile)) != (int)fi->ulFilesize) {
+        pthread_mutex_lock(data->outputMutex);
+        fprintf(stderr, "Error: Can't load elevation data from %s\n", fi->szFilename);
+        pthread_mutex_unlock(data->outputMutex);
+        fclose(InFile);
+        free(iElevationData);
+        *(data->globalResult) = 1;
+        return NULL;
+    }
+    fclose(InFile);
+
+    // PROCEDURAL DETAIL GENERATION
+    if (opts->enableDetail) {
+        // Byte-Swapping vor der Detail-Generation durchführen
+        for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++) {
+            if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90) {
+                iElevationData[pre] = (short)(((iElevationData[pre] & 0xff) << 8) | 
+                                            ((iElevationData[pre] & 0xff00) >> 8));
+            }
+            if (iElevationData[pre] < 0) iElevationData[pre] = 0;
+            if (iElevationData[pre] > _MAX_HEIGHT) iElevationData[pre] = _MAX_HEIGHT;
+        }
+        
+        // Procedural Detail hinzufügen
+        short int* detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight, 
+                                                     opts->scaleFactor, opts->detailIntensity, opts->noiseSeed);
+        
+        if (detailedData) {
+            free(iElevationData);
+            iElevationData = detailedData;
+            fi->iWidth *= opts->scaleFactor;
+            fi->iHeight *= opts->scaleFactor;
+            fi->ulFilesize = fi->iWidth * fi->iHeight * sizeof(short int);
+            
+            pthread_mutex_lock(data->outputMutex);
+            if (opts->verbose) {
+                fprintf(stderr, "INFO: Enhanced resolution: %dx%d pixels for %s\n", 
+                        fi->iWidth, fi->iHeight, fi->szFilename);
+            }
+            pthread_mutex_unlock(data->outputMutex);
+        } else {
+            pthread_mutex_lock(data->outputMutex);
+            fprintf(stderr, "WARNING: Could not add procedural detail to %s, using original data\n", 
+                    fi->szFilename);
+            pthread_mutex_unlock(data->outputMutex);
+        }
+    }
+
+    // Speicher für Pixel Data allokieren
+    if ((PixelData = (RGB*)malloc(fi->ulFilesize * sizeof(struct tag_RGB))) == NULL) {
+        pthread_mutex_lock(data->outputMutex);
+        fprintf(stderr, "Error: Can't allocate pixel data block for %s\n", fi->szFilename);
+        pthread_mutex_unlock(data->outputMutex);
+        free(iElevationData);
+        *(data->globalResult) = 1;
+        return NULL;
+    }
+     
+    // Elevation zu RGB konvertieren
+    for (unsigned long m = 0; m < (fi->ulFilesize) / 2; m++) {
+        if (!opts->enableDetail) {
+            // Byte-Swapping nur wenn keine Procedural Details verwendet werden
+            if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90) {
+                iElevationData[m] = (short)(((iElevationData[m] & 0xff) << 8) | 
+                                          ((iElevationData[m] & 0xff00) >> 8));
+            }
+        }
+
+        if (iOverallMaxElevation != 0) {
+            PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
+        }
+    }
+
+    // PNG Output-Dateiname generieren
+    strcpy(OutputHeightmapFile, fi->szFilename);
+    OutputHeightmapFile[strlen(OutputHeightmapFile) - 4] = '\0';
+    strcat(OutputHeightmapFile, ".png");
+    
+    // PNG schreiben (WritePNG ist nicht thread-safe wegen globaler PixelData, das muss synchronisiert werden)
+    pthread_mutex_lock(data->outputMutex);
+    RGB* tempPixelData = PixelData;  // Globale Variable temporär sichern
+    PixelData = PixelData;  // Thread-lokale PixelData zur globalen Variable machen
+    WritePNG(OutputHeightmapFile, fi->iWidth, fi->iHeight);
+    PixelData = tempPixelData;  // Globale Variable zurücksetzen
+    pthread_mutex_unlock(data->outputMutex);
+
+    // Cleanup für diesen Thread
+    free(iElevationData);
+    free(PixelData);  // Thread-lokale PixelData freigeben
+    
+    // Fortschrittszähler aktualisieren
+    pthread_mutex_lock(data->outputMutex);
+    (*(data->filesProcessed))++;
+    if (opts->verbose) {
+        fprintf(stderr, "INFO: Completed %d/%d files\n", *(data->filesProcessed), data->totalFiles);
+    }
+    pthread_mutex_unlock(data->outputMutex);
+    
+    return NULL;
+}
+
+// PARALLELISIERTE BATCH-VERARBEITUNG
+int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
+    if (iNumFilesToConvert <= 1 || opts.numThreads <= 1) {
+        // Fallback auf sequentielle Verarbeitung bei wenigen Dateien oder 1 Thread
+        return processFilesSequential(fi, iNumFilesToConvert, opts);
+    }
+    
+    pthread_t* threads;
+    ThreadData* threadData;
+    pthread_mutex_t outputMutex = PTHREAD_MUTEX_INITIALIZER;
+    int globalResult = 0;
+    int filesProcessed = 0;
+    
+    // Anzahl Threads an verfügbare Dateien anpassen
+    int actualThreads = (opts.numThreads > iNumFilesToConvert) ? iNumFilesToConvert : opts.numThreads;
+    
+    if (opts.verbose) {
+        fprintf(stderr, "INFO: Starting parallel processing with %d threads for %d files\n", 
+                actualThreads, iNumFilesToConvert);
+    }
+    
+    // Thread-Arrays allokieren
+    threads = (pthread_t*)malloc(actualThreads * sizeof(pthread_t));
+    threadData = (ThreadData*)malloc(iNumFilesToConvert * sizeof(ThreadData));
+    
+    if (!threads || !threadData) {
+        fprintf(stderr, "Error: Cannot allocate memory for threading\n");
+        if (threads) free(threads);
+        if (threadData) free(threadData);
+        return 1;
+    }
+    
+    // Thread-Daten für alle Dateien vorbereiten
+    for (int i = 0; i < iNumFilesToConvert; i++) {
+        threadData[i].fileIndex = i;
+        threadData[i].fileInfo = fi;
+        threadData[i].opts = &opts;
+        threadData[i].globalResult = &globalResult;
+        threadData[i].outputMutex = &outputMutex;
+        threadData[i].filesProcessed = &filesProcessed;
+        threadData[i].totalFiles = iNumFilesToConvert;
+    }
+    
+    // Threads in Batches starten (Thread-Pool Simulation)
+    int fileIndex = 0;
+    while (fileIndex < iNumFilesToConvert && globalResult == 0) {
+        int threadsToStart = (iNumFilesToConvert - fileIndex > actualThreads) ? 
+                           actualThreads : (iNumFilesToConvert - fileIndex);
+        
+        // Threads starten
+        for (int t = 0; t < threadsToStart; t++) {
+            if (pthread_create(&threads[t], NULL, processFileWorker, &threadData[fileIndex + t]) != 0) {
+                fprintf(stderr, "Error: Cannot create thread %d\n", t);
+                globalResult = 1;
+                break;
+            }
+        }
+        
+        // Auf alle gestarteten Threads warten
+        for (int t = 0; t < threadsToStart; t++) {
+            pthread_join(threads[t], NULL);
+        }
+        
+        fileIndex += threadsToStart;
+    }
+    
+    // Cleanup
+    free(threads);
+    free(threadData);
+    pthread_mutex_destroy(&outputMutex);
+    
+    if (opts.verbose) {
+        fprintf(stderr, "INFO: Parallel processing completed. Result: %s\n", 
+                globalResult == 0 ? "SUCCESS" : "ERROR");
+    }
+    
+    return globalResult;
+}
+
+// SEQUENTIELLE VERARBEITUNG (Fallback)
+int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
+    if (opts.verbose) {
+        fprintf(stderr, "INFO: Using sequential processing for %d files\n", iNumFilesToConvert);
+    }
+    
+    // Die ursprüngliche Schleife als separate Funktion
+    for (int k = 0; k < iNumFilesToConvert; k++) {
+        // Verwende die Worker-Logik, aber ohne Threading
+        ThreadData data;
+        data.fileIndex = k;
+        data.fileInfo = fi;
+        data.opts = &opts;
+        int result = 0;
+        data.globalResult = &result;
+        pthread_mutex_t dummyMutex = PTHREAD_MUTEX_INITIALIZER;
+        data.outputMutex = &dummyMutex;
+        int processed = k;
+        data.filesProcessed = &processed;
+        data.totalFiles = iNumFilesToConvert;
+        
+        processFileWorker(&data);
+        
+        if (result != 0) {
+            pthread_mutex_destroy(&dummyMutex);
+            return result;
+        }
+        pthread_mutex_destroy(&dummyMutex);
+    }
+    
+    return 0;
 }
 
 // NEUE FUNKTIONEN FÜR PROCEDURAL DETAIL GENERATION
@@ -604,6 +783,7 @@ void initDefaultOptions(ProgramOptions *opts) {
     opts->verbose = 1;  // Standard: Verbose Output
     opts->showHelp = 0;
     opts->showVersion = 0;
+    opts->numThreads = DEFAULT_NUM_THREADS;  // Neue Option für Thread-Anzahl
 }
 
 // Zeige Hilfe-Text
@@ -613,11 +793,13 @@ void showHelp(const char *programName) {
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
     
     printf("OPTIONS:\n");
-    printf("  -s, --scale <factor>     Scale factor for resolution enhancement (default: %d)\n", DEFAULT_SCALE_FACTOR);
+    printf("  -s, --scale-factor <n>   Scale factor for resolution enhancement (default: %d)\n", DEFAULT_SCALE_FACTOR);
     printf("                           1=original, 2=double, 3=triple resolution\n");
-    printf("  -i, --intensity <value>  Detail intensity in meters (default: %.1f)\n", DEFAULT_DETAIL_INTENSITY);
+    printf("  -i, --detail-intensity <f> Detail intensity in meters (default: %.1f)\n", DEFAULT_DETAIL_INTENSITY);
     printf("                           Higher values = more pronounced details\n");
-    printf("  -r, --seed <value>       Random seed for procedural generation (default: %d)\n", DEFAULT_NOISE_SEED);
+    printf("  -r, --noise-seed <n>     Random seed for procedural generation (default: %d)\n", DEFAULT_NOISE_SEED);
+    printf("  -t, --threads <n>        Number of parallel threads (default: %d)\n", DEFAULT_NUM_THREADS);
+    printf("                           1=sequential, 2-16=parallel processing\n");
     printf("  -d, --disable-detail     Disable procedural detail generation\n");
     printf("  -q, --quiet              Suppress verbose output\n");
     printf("  -h, --help               Show this help message\n");
@@ -630,8 +812,9 @@ void showHelp(const char *programName) {
     printf("EXAMPLES:\n");
     printf("  %s N48E011.hgt                          # Standard processing\n", programName);
     printf("  %s -s 2 -i 25.0 N48E011.hgt             # 2x scale, high detail\n", programName);
+    printf("  %s -t 8 terrain_files.txt               # 8 parallel threads\n", programName);
     printf("  %s -d -q terrain_files.txt              # No detail, quiet mode\n", programName);
-    printf("  %s --scale 4 --intensity 10 --seed 999  # Custom parameters\n\n", programName);
+    printf("  %s --threads 4 --scale-factor 3 --detail-intensity 10  # Parallel + custom\n\n", programName);
     
     printf("OUTPUT:\n");
     printf("  Creates PNG files with same basename as input HGT files.\n");
@@ -652,6 +835,7 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {"scale-factor",     required_argument, 0, 's'},
         {"detail-intensity", required_argument, 0, 'i'},
         {"noise-seed",       required_argument, 0, 'r'},
+        {"threads",          required_argument, 0, 't'},
         {"disable-detail",   no_argument,       0, 'd'},
         {"quiet",            no_argument,       0, 'q'},
         {"help",             no_argument,       0, 'h'},
@@ -659,7 +843,7 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "s:i:r:dqhv", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:i:r:t:dqhv", long_options, NULL)) != -1) {
         switch (c) {
             case 's':
                 opts->scaleFactor = atoi(optarg);
@@ -679,6 +863,14 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
                 
             case 'r':
                 opts->noiseSeed = atoi(optarg);
+                break;
+                
+            case 't':
+                opts->numThreads = atoi(optarg);
+                if (opts->numThreads < 1 || opts->numThreads > 16) {
+                    fprintf(stderr, "Error: Number of threads must be between 1 and 16\n");
+                    return 1;
+                }
                 break;
                 
             case 'd':
