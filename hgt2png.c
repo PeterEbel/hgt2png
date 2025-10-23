@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <getopt.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,6 +36,19 @@
 
 // Neue Konstanten für Procedural Detail Generation
 #define ENABLE_PROCEDURAL_DETAIL 1
+
+// Parameter-Struktur für Kommandozeilen-Optionen
+typedef struct {
+  int scaleFactor;
+  float detailIntensity;
+  int noiseSeed;
+  int enableDetail;
+  int verbose;
+  int showHelp;
+  int showVersion;
+} ProgramOptions;
+
+// Standard-Werte
 #define DEFAULT_SCALE_FACTOR 3
 #define DEFAULT_DETAIL_INTENSITY 15.0f
 #define DEFAULT_NOISE_SEED 12345
@@ -61,6 +75,12 @@ RGB *PixelData;
 
 void WritePNG(const char *, short int, short int);
 
+// Parameter-Management Funktionen
+void initDefaultOptions(ProgramOptions *opts);
+void showHelp(const char *programName);
+void showVersion(void);
+int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile);
+
 // Neue Funktionen für Procedural Detail Generation
 float SimpleNoise(int x, int y, int seed);
 float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
@@ -85,8 +105,10 @@ short int iOverallMaxElevation;
 short int iCurrentMinElevation;
 short int iCurrentMaxElevation;
 
-int main(int argc, const char *argv[])
+int main(int argc, char *argv[])
 {
+  ProgramOptions opts;
+  char *inputFile = NULL;
 
   FILE *InFile;
   FILE *FileList;
@@ -98,30 +120,49 @@ int main(int argc, const char *argv[])
   int iNumIntRead;
   int iNumFilesToConvert = 0;
 
-  fprintf(stderr, "\nhgt2png Converter v1.1.0 (C) 2025 - with Procedural Detail Generation\n");
+  // Initialisiere Standard-Optionen
+  initDefaultOptions(&opts);
 
-  if (argc == 1)  
-  {
-    fprintf(stderr, "\nusage: hgt2png <filename>|<filelist>\n\n");
-    return 1;
+  // Parse Kommandozeilen-Argumente
+  int parseResult = parseArguments(argc, argv, &opts, &inputFile);
+  if (parseResult != 0) {
+    return parseResult;
   }
 
-  if ((strstr(argv[1], "HGT") != NULL) || strstr(argv[1], "hgt") != NULL)
+  // Zeige Version falls angefordert
+  if (opts.showVersion) {
+    showVersion();
+    return 0;
+  }
+
+  // Zeige Hilfe falls angefordert oder keine Input-Datei
+  if (opts.showHelp || inputFile == NULL) {
+    showHelp(argv[0]);
+    return opts.showHelp ? 0 : 1;
+  }
+
+  if (opts.verbose) {
+    fprintf(stderr, "\nhgt2png Converter v1.1.0 (C) 2025 - with Procedural Detail Generation\n");
+    fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n", 
+            opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
+  }
+
+  if ((strstr(inputFile, "HGT") != NULL) || strstr(inputFile, "hgt") != NULL)
   {
-    fprintf(stderr, "INFO: Single-File Mode\n");
-    sCurrentFilename[0] = (char *) malloc(strlen(argv[1]) + 1);
+    if (opts.verbose) fprintf(stderr, "INFO: Single-File Mode\n");
+    sCurrentFilename[0] = (char *) malloc(strlen(inputFile) + 1);
     if (sCurrentFilename[0] == NULL) {
       fprintf(stderr, "Error: Can't allocate memory for filename\n");
       return 1;
     }
-    strcpy(sCurrentFilename[0], argv[1]);
+    strcpy(sCurrentFilename[0], inputFile);
     iNumFilesToConvert = 1;
   }
   else
   {  
-    fprintf(stderr, "INFO: Filelist Mode\n");
-    if ((FileList = fopen(argv[1], "rb")) == NULL) {
-      fprintf(stderr, "Error: Can't open file list %s\n", argv[1]);
+    if (opts.verbose) fprintf(stderr, "INFO: Filelist Mode\n");
+    if ((FileList = fopen(inputFile, "rb")) == NULL) {
+      fprintf(stderr, "Error: Can't open file list %s\n", inputFile);
       return 1;
     }
 
@@ -288,36 +329,36 @@ int main(int argc, const char *argv[])
     fclose(InFile);
 
     // PROCEDURAL DETAIL GENERATION - NEU EINGEFÜGT
-    #if ENABLE_PROCEDURAL_DETAIL
-    fprintf(stderr, "INFO: Adding procedural detail to %s...\n", fi[k].szFilename);
-    
-    // Byte-Swapping vor der Detail-Generation durchführen
-    for (unsigned long pre = 0; pre < (fi[k].ulFilesize) / 2; pre++)
-    {
-      if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
-      {
-        iElevationData[pre] = (short)(((iElevationData[pre] & 0xff) << 8) | ((iElevationData[pre] & 0xff00) >> 8));
-      }
-      if (iElevationData[pre] < 0) iElevationData[pre] = 0;
-      if (iElevationData[pre] > _MAX_HEIGHT) iElevationData[pre] = _MAX_HEIGHT;
-    }
-    
-    // Procedural Detail hinzufügen
-    short int* detailedData = AddProceduralDetail(iElevationData, fi[k].iWidth, fi[k].iHeight, 
-                                                  DEFAULT_SCALE_FACTOR, DEFAULT_DETAIL_INTENSITY, DEFAULT_NOISE_SEED);
-    
-    if (detailedData) {
-      free(iElevationData);
-      iElevationData = detailedData;
-      fi[k].iWidth *= DEFAULT_SCALE_FACTOR;
-      fi[k].iHeight *= DEFAULT_SCALE_FACTOR;
-      fi[k].ulFilesize = fi[k].iWidth * fi[k].iHeight * sizeof(short int);
+    if (opts.enableDetail) {
+      if (opts.verbose) fprintf(stderr, "INFO: Adding procedural detail to %s...\n", fi[k].szFilename);
       
-      fprintf(stderr, "INFO: Enhanced resolution: %dx%d pixels\n", fi[k].iWidth, fi[k].iHeight);
-    } else {
-      fprintf(stderr, "WARNING: Could not add procedural detail, using original data\n");
+      // Byte-Swapping vor der Detail-Generation durchführen
+      for (unsigned long pre = 0; pre < (fi[k].ulFilesize) / 2; pre++)
+      {
+        if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
+        {
+          iElevationData[pre] = (short)(((iElevationData[pre] & 0xff) << 8) | ((iElevationData[pre] & 0xff00) >> 8));
+        }
+        if (iElevationData[pre] < 0) iElevationData[pre] = 0;
+        if (iElevationData[pre] > _MAX_HEIGHT) iElevationData[pre] = _MAX_HEIGHT;
+      }
+      
+      // Procedural Detail hinzufügen
+      short int* detailedData = AddProceduralDetail(iElevationData, fi[k].iWidth, fi[k].iHeight, 
+                                                    opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
+      
+      if (detailedData) {
+        free(iElevationData);
+        iElevationData = detailedData;
+        fi[k].iWidth *= opts.scaleFactor;
+        fi[k].iHeight *= opts.scaleFactor;
+        fi[k].ulFilesize = fi[k].iWidth * fi[k].iHeight * sizeof(short int);
+        
+        if (opts.verbose) fprintf(stderr, "INFO: Enhanced resolution: %dx%d pixels\n", fi[k].iWidth, fi[k].iHeight);
+      } else {
+        fprintf(stderr, "WARNING: Could not add procedural detail, using original data\n");
+      }
     }
-    #endif
 
     if ((PixelData = (RGB *) malloc(fi[k].ulFilesize * sizeof(struct tag_RGB))) == NULL)
     {
@@ -337,13 +378,13 @@ int main(int argc, const char *argv[])
      
     for (unsigned long m = 0; m < (fi[k].ulFilesize) / 2; m++)
     {
-      #if !ENABLE_PROCEDURAL_DETAIL
-      // Byte-Swapping nur wenn keine Procedural Details verwendet werden
-      if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
-      {
-        iElevationData[m] = (short)(((iElevationData[m] & 0xff) << 8) | ((iElevationData[m] & 0xff00) >> 8));
+      if (!opts.enableDetail) {
+        // Byte-Swapping nur wenn keine Procedural Details verwendet werden
+        if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
+        {
+          iElevationData[m] = (short)(((iElevationData[m] & 0xff) << 8) | ((iElevationData[m] & 0xff00) >> 8));
+        }
       }
-      #endif
 
       if (iOverallMaxElevation != 0)
       {
@@ -551,4 +592,125 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
     }
     
     return detailedData;
+}
+
+// PARAMETER-MANAGEMENT FUNKTIONEN
+
+// Initialisiere Standard-Optionen
+void initDefaultOptions(ProgramOptions *opts) {
+    opts->scaleFactor = DEFAULT_SCALE_FACTOR;
+    opts->detailIntensity = DEFAULT_DETAIL_INTENSITY;
+    opts->noiseSeed = DEFAULT_NOISE_SEED;
+    opts->enableDetail = ENABLE_PROCEDURAL_DETAIL;
+    opts->verbose = 1;  // Standard: Verbose Output
+    opts->showHelp = 0;
+    opts->showVersion = 0;
+}
+
+// Zeige Hilfe-Text
+void showHelp(const char *programName) {
+    printf("hgt2png v1.1.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation\n\n");
+    printf("USAGE:\n");
+    printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
+    
+    printf("OPTIONS:\n");
+    printf("  -s, --scale <factor>     Scale factor for resolution enhancement (default: %d)\n", DEFAULT_SCALE_FACTOR);
+    printf("                           1=original, 2=double, 3=triple resolution\n");
+    printf("  -i, --intensity <value>  Detail intensity in meters (default: %.1f)\n", DEFAULT_DETAIL_INTENSITY);
+    printf("                           Higher values = more pronounced details\n");
+    printf("  -r, --seed <value>       Random seed for procedural generation (default: %d)\n", DEFAULT_NOISE_SEED);
+    printf("  -d, --disable-detail     Disable procedural detail generation\n");
+    printf("  -q, --quiet              Suppress verbose output\n");
+    printf("  -h, --help               Show this help message\n");
+    printf("  -v, --version            Show version information\n\n");
+    
+    printf("INPUT:\n");
+    printf("  Single HGT file:         %s terrain.hgt\n", programName);
+    printf("  Multiple files (list):   %s filelist.txt\n\n", programName);
+    
+    printf("EXAMPLES:\n");
+    printf("  %s N48E011.hgt                          # Standard processing\n", programName);
+    printf("  %s -s 2 -i 25.0 N48E011.hgt             # 2x scale, high detail\n", programName);
+    printf("  %s -d -q terrain_files.txt              # No detail, quiet mode\n", programName);
+    printf("  %s --scale 4 --intensity 10 --seed 999  # Custom parameters\n\n", programName);
+    
+    printf("OUTPUT:\n");
+    printf("  Creates PNG files with same basename as input HGT files.\n");
+    printf("  Example: N48E011.hgt → N48E011.png\n\n");
+}
+
+// Zeige Version
+void showVersion(void) {
+    printf("hgt2png v1.1.0\n");
+    printf("HGT to PNG Heightmap Converter with Procedural Detail Generation\n");
+    printf("(C) 2025 Peter Ebel\n");
+}
+
+// Parse Kommandozeilen-Argumente
+int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile) {
+    int c;
+    static struct option long_options[] = {
+        {"scale-factor",     required_argument, 0, 's'},
+        {"detail-intensity", required_argument, 0, 'i'},
+        {"noise-seed",       required_argument, 0, 'r'},
+        {"disable-detail",   no_argument,       0, 'd'},
+        {"quiet",            no_argument,       0, 'q'},
+        {"help",             no_argument,       0, 'h'},
+        {"version",          no_argument,       0, 'v'},
+        {0, 0, 0, 0}
+    };
+
+    while ((c = getopt_long(argc, argv, "s:i:r:dqhv", long_options, NULL)) != -1) {
+        switch (c) {
+            case 's':
+                opts->scaleFactor = atoi(optarg);
+                if (opts->scaleFactor < 1 || opts->scaleFactor > 10) {
+                    fprintf(stderr, "Error: Scale factor must be between 1 and 10\n");
+                    return 1;
+                }
+                break;
+                
+            case 'i':
+                opts->detailIntensity = atof(optarg);
+                if (opts->detailIntensity < 0.0f || opts->detailIntensity > 100.0f) {
+                    fprintf(stderr, "Error: Detail intensity must be between 0.0 and 100.0\n");
+                    return 1;
+                }
+                break;
+                
+            case 'r':
+                opts->noiseSeed = atoi(optarg);
+                break;
+                
+            case 'd':
+                opts->enableDetail = 0;
+                break;
+                
+            case 'q':
+                opts->verbose = 0;
+                break;
+                
+            case 'h':
+                opts->showHelp = 1;
+                return 0;
+                
+            case 'v':
+                opts->showVersion = 1;
+                return 0;
+                
+            case '?':
+                fprintf(stderr, "Use '%s --help' for usage information.\n", argv[0]);
+                return 1;
+                
+            default:
+                return 1;
+        }
+    }
+
+    // Input-Datei aus den verbleibenden Argumenten
+    if (optind < argc) {
+        *inputFile = argv[optind];
+    }
+
+    return 0;
 }
