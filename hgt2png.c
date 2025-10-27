@@ -116,18 +116,18 @@ FileInfo *fi;
 RGB *PixelData;
 
 void WritePNG(const char *, size_t, size_t);
-void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData);
-void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData);
-void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData);
+static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData);
+static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData);
+static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData);
 
 // Parameter-Management Funktionen
-void initDefaultOptions(ProgramOptions *opts);
-void showHelp(const char *programName);
-void showVersion(void);
-int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile);
+static void initDefaultOptions(ProgramOptions *opts);
+static void showHelp(const char *programName);
+static void showVersion(void);
+static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile);
 
 // Sichere Multiplikation mit Überlaufdetektion
-int safe_multiply_size_t(size_t a, size_t b, size_t* result) {
+static int safe_multiply_size_t(size_t a, size_t b, size_t* result) {
     if (a == 0 || b == 0) {
         *result = 0;
         return 1;
@@ -143,7 +143,7 @@ int safe_multiply_size_t(size_t a, size_t b, size_t* result) {
 }
 
 // Sichere malloc mit Überlaufschutz
-void* safe_malloc_pixels(size_t width, size_t height, size_t element_size) {
+static void* safe_malloc_pixels(size_t width, size_t height, size_t element_size) {
     size_t pixel_count;
     size_t total_bytes;
     
@@ -170,30 +170,30 @@ void* safe_malloc_pixels(size_t width, size_t height, size_t element_size) {
 }
 
 // Neue Funktionen für Procedural Detail Generation
-float SimpleNoise(int x, int y, int seed);
-float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
-short int BilinearInterpolate(short int* data, int width, int height, float x, float y);
-float GetPixelDistance(int hgtType);
-float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType);
-float GetHeightTypeFactor(short int height);
-float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
-int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east);
-void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
+static float SimpleNoise(int x, int y, int seed);
+static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
+static short int BilinearInterpolate(short int* data, int width, int height, float x, float y);
+static float GetPixelDistance(int hgtType);
+static float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType);
+static float GetHeightTypeFactor(short int height);
+static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
+static int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east);
+static void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
                        int effectiveMinHeight, int effectiveMaxHeight);
-short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
+static short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType);
 
 // Funktionen für Parallelisierung
-void* processFileWorker(void* arg);
-int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
-int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
+static void* processFileWorker(void* arg);
+static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
+static int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
 
 // Hilfsfunktion: Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
-void generateOutputFilename(const char* inputPath, char* outputPath);
+static void generateOutputFilename(const char* inputPath, char* outputPath);
 
 // NoData-Behandlung
-int isNoDataValue(int16_t value, int hgtType);
-int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount);
+static int isNoDataValue(int16_t value, int hgtType);
+static int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount);
 
 const int HGT_TYPE_30 = 1201;
 const int HGT_TYPE_90 = 3601;
@@ -547,7 +547,7 @@ void WritePNG(const char *szFilename, size_t _iWidth, size_t _iHeight)
   WritePNGWithData(szFilename, _iWidth, _iHeight, PixelData);
 }
 
-void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData)
+static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData)
 {
   png_image image; 
 
@@ -567,7 +567,7 @@ void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, R
   png_image_free(&image);
 }
 
-void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData)
+static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData)
 {
   png_image image; 
 
@@ -587,7 +587,7 @@ void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, 
   png_image_free(&image);
 }
 
-void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, unsigned short* pixelData)
+static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData)
 {
   png_image image; 
 
@@ -608,7 +608,7 @@ void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHei
 }
 
 // PARALLELISIERUNG - Worker-Thread Funktion
-void* processFileWorker(void* arg) {
+static void* processFileWorker(void* arg) {
     ThreadData* data = (ThreadData*)arg;
     struct tag_FileInfoHGT* fi = &data->fileInfo[data->fileIndex];
     ProgramOptions* opts = data->opts;
@@ -869,7 +869,7 @@ void* processFileWorker(void* arg) {
 }
 
 // PARALLELISIERTE BATCH-VERARBEITUNG
-int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
+static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
     if (iNumFilesToConvert <= 1 || opts.numThreads <= 1) {
         // Fallback auf sequentielle Verarbeitung bei wenigen Dateien oder 1 Thread
         return processFilesSequential(fi, iNumFilesToConvert, opts);
@@ -948,7 +948,7 @@ int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, Pro
 }
 
 // SEQUENTIELLE VERARBEITUNG (Fallback)
-int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
+static int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
     if (opts.verbose) {
         fprintf(stderr, "INFO: Using sequential processing for %d files\n", iNumFilesToConvert);
     }
@@ -983,14 +983,14 @@ int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, P
 // PROCEDURAL DETAIL GENERATION
 
 // Simple Noise-Funktion (Perlin-ähnlich)
-float SimpleNoise(int x, int y, int seed) {
+static float SimpleNoise(int x, int y, int seed) {
     int n = x + y * 57 + seed * 131;
     n = (n << 13) ^ n;
     return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
 }
 
 // Fraktales Noise für verschiedene Detailgrade
-float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed) {
+static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed) {
     float total = 0.0f;
     float frequency = scale;
     float amplitude = 1.0f;
@@ -1007,7 +1007,7 @@ float FractalNoise(float x, float y, int octaves, float persistence, float scale
 }
 
 // Bilineare Interpolation
-short int BilinearInterpolate(short int* data, int width, int height, float x, float y) {
+static short int BilinearInterpolate(short int* data, int width, int height, float x, float y) {
     int x1 = (int)x;
     int y1 = (int)y;
     int x2 = x1 + 1;
@@ -1037,7 +1037,7 @@ short int BilinearInterpolate(short int* data, int width, int height, float x, f
 
 // Lokale Steigung berechnen
 // Pixelabstand basierend auf HGT-Typ berechnen
-float GetPixelDistance(int hgtType) {
+static float GetPixelDistance(int hgtType) {
     if (hgtType == HGT_TYPE_30) {
         return 60.0f; // 2 * 30m für SRTM-1 (1201x1201)
     } else if (hgtType == HGT_TYPE_90) {
@@ -1048,7 +1048,7 @@ float GetPixelDistance(int hgtType) {
     }
 }
 
-float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType) {
+static float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType) {
     int ix = (int)x;
     int iy = (int)y;
     
@@ -1069,7 +1069,7 @@ float CalculateLocalSlope(short int* data, int width, int height, float x, float
 }
 
 // Terrain-typ-spezifische Faktoren
-float GetHeightTypeFactor(short int height) {
+static float GetHeightTypeFactor(short int height) {
     if (height < 100) return 0.5f;      // Küstenebenen - wenig Detail
     else if (height < 500) return 0.7f;  // Hügelland - mittleres Detail
     else if (height < 1500) return 1.0f; // Berge - volles Detail
@@ -1078,7 +1078,7 @@ float GetHeightTypeFactor(short int height) {
 }
 
 // Kurven-Mapping für verschiedene Elevation-zu-Pixel-Transformationen
-float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma) {
+static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma) {
     // Eingabe-Clipping
     if (normalizedValue < 0.0f) normalizedValue = 0.0f;
     if (normalizedValue > 1.0f) normalizedValue = 1.0f;
@@ -1114,7 +1114,7 @@ float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma)
 }
 
 // Extrahiert geografische Grenzen aus HGT-Dateinamen (z.B. "N49E004.hgt" -> lat 49-50, lon 4-5)
-int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east) {
+static int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east) {
     // Extrahiere Dateinamen ohne Pfad
     const char* basename = strrchr(filename, '/');
     if (basename) basename++; else basename = filename;
@@ -1146,7 +1146,7 @@ int extractGeoBounds(const char* filename, float* south, float* north, float* we
 }
 
 // Hauptfunktion für Procedural Detail Generation
-short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
+static short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType) {
     
     size_t newWidth, newHeight;
@@ -1237,7 +1237,7 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
 // HILFSFUNKTIONEN
 
 // Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
-void generateOutputFilename(const char* inputPath, char* outputPath) {
+static void generateOutputFilename(const char* inputPath, char* outputPath) {
     const char* filename = inputPath;
     const char* lastSlash = strrchr(inputPath, '/');
     
@@ -1262,7 +1262,7 @@ void generateOutputFilename(const char* inputPath, char* outputPath) {
 // NODATA-BEHANDLUNG
 
 // Prüft ob ein Rohwert ein NoData-Wert ist (nach Endian-Konvertierung)
-int isNoDataValue(int16_t value, int hgtType) {
+static int isNoDataValue(int16_t value, int hgtType) {
     // Nur für SRTM-Daten (30m/90m) NoData-Erkennung
     if (hgtType != HGT_TYPE_30 && hgtType != HGT_TYPE_90) {
         return 0;
@@ -1273,7 +1273,7 @@ int isNoDataValue(int16_t value, int hgtType) {
 }
 
 // Verarbeitet einen Höhenwert: Network-to-Host Byte Order + NoData-Behandlung + Clamping
-int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount) {
+static int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount) {
     // 1. Endian-Konvertierung für SRTM-Daten (Big Endian -> Host Endian)
     int16_t hostValue = rawValue;
     if (hgtType == HGT_TYPE_30 || hgtType == HGT_TYPE_90) {
@@ -1298,7 +1298,7 @@ int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount) {
 // PARAMETER-MANAGEMENT FUNKTIONEN
 
 // Initialisiere Standard-Optionen
-void initDefaultOptions(ProgramOptions *opts) {
+static void initDefaultOptions(ProgramOptions *opts) {
     opts->scaleFactor = DEFAULT_SCALE_FACTOR;
     opts->detailIntensity = DEFAULT_DETAIL_INTENSITY;
     opts->noiseSeed = DEFAULT_NOISE_SEED;
@@ -1317,7 +1317,7 @@ void initDefaultOptions(ProgramOptions *opts) {
 }
 
 // Zeige Hilfe-Text
-void showHelp(const char *programName) {
+static void showHelp(const char *programName) {
     printf("hgt2png v1.1.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
@@ -1361,14 +1361,14 @@ void showHelp(const char *programName) {
 }
 
 // Zeige Version
-void showVersion(void) {
+static void showVersion(void) {
     printf("hgt2png v1.1.0\n");
     printf("HGT to PNG Heightmap Converter with Procedural Detail Generation\n");
     printf("(C) 2025 Peter Ebel\n");
 }
 
 // Parse Kommandozeilen-Argumente
-int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile) {
+static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile) {
     int c;
     static struct option long_options[] = {
         {"scale-factor",     required_argument, 0, 's'},
@@ -1505,7 +1505,7 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
 }
 
 // Schreibt Metadata-Sidecar-Datei für präzises Blender-Scaling
-void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
+static void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
                        int effectiveMinHeight, int effectiveMaxHeight) {
     
     if (opts->metadataFormat == METADATA_NONE) return;
