@@ -30,8 +30,6 @@
 	
 #include <png.h>
 
-#define ChannelBlend_Multiply(A,B)   ((unsigned char)((A * B) / 255))
-
 #define _MAX_PATH    255
 #define _MAX_FILES   255
 #define _MAX_HEIGHT 6000
@@ -59,12 +57,12 @@ typedef struct {
   int verbose;
   int showHelp;
   int showVersion;
-  int numThreads;  // Neue Option für Thread-Anzahl
-  int output16bit;  // Neue Option für 16-Bit PNG Output
-  float gamma;      // Gamma-Korrektur (Standard: 1.0)
-  CurveType curveType;  // Kurventyp (linear/log)
-  int minHeight;    // Minimale Höhe für Mapping (-1 = Auto)
-  int maxHeight;    // Maximale Höhe für Mapping (-1 = Auto)
+  int numThreads;                 // Option für Thread-Anzahl
+  int output16bit;                // Option für 16-Bit PNG Output
+  float gamma;                    // Gamma-Korrektur (Standard: 1.0)
+  CurveType curveType;            // Kurventyp (linear/log)
+  int minHeight;                  // Minimale Höhe für Mapping (-1 = Auto)
+  int maxHeight;                  // Maximale Höhe für Mapping (-1 = Auto)
   MetadataFormat metadataFormat;  // Metadata-Format (none/json/txt)
 } ProgramOptions;
 
@@ -73,10 +71,10 @@ typedef struct {
   int fileIndex;
   struct tag_FileInfoHGT* fileInfo;  // Verwende den vollständigen Strukturnamen
   ProgramOptions* opts;
-  int* globalResult;        // Shared result status
-  pthread_mutex_t* outputMutex;  // Mutex für thread-sichere Ausgabe
-  int* filesProcessed;      // Shared counter für Fortschrittsanzeige
-  int totalFiles;           // Gesamtanzahl Dateien
+  int* globalResult;                 // Shared result status
+  pthread_mutex_t* outputMutex;      // Mutex für thread-sichere Ausgabe
+  int* filesProcessed;               // Shared counter für Fortschrittsanzeige
+  int totalFiles;                    // Gesamtanzahl Dateien
 } ThreadData;
 
 // Standard-Werte
@@ -131,7 +129,7 @@ void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType);
 
-// Neue Funktionen für Parallelisierung
+// Funktionen für Parallelisierung
 void* processFileWorker(void* arg);
 int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
 int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
@@ -152,9 +150,7 @@ const unsigned long HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(short int);
 // NoData Konstanten (SRTM Standard)
 const short int NODATA_VALUE_BE = (short int)0x8000;  // Big Endian: -32768
 const short int NODATA_VALUE_LE = (short int)0x0080;  // Little Endian: 128 (nach Byte-Swap)
-const short int NODATA_REPLACEMENT = 0;                // Ersatzwert für NoData
-
-// iHGTType globale Variable entfernt - jetzt pro-Datei in FileInfo.hgtType
+const short int NODATA_REPLACEMENT = 0;               // Ersatzwert für NoData
 
 char OutputHeightmapFile[_MAX_PATH];
 
@@ -221,7 +217,6 @@ int main(int argc, char *argv[])
     if (opts.verbose) fprintf(stderr, "INFO: Filelist Mode\n");
     if ((FileList = fopen(inputFile, "rb")) == NULL) {
       fprintf(stderr, "Error: Can't open file list %s\n", inputFile);
-      // sCurrentFilename[0] wurde in diesem Pfad nicht allokiert
       return 1;
     }
 
@@ -423,7 +418,7 @@ int main(int argc, char *argv[])
     
     for (unsigned long j = 0; j < fi[i].ulFilesize / 2; j++)
     {
-      // Korrekte NoData-Behandlung mit neuer Funktion
+      // NoData-Behandlung
       iElevationData[j] = processElevationValue(iElevationData[j], fi[i].hgtType, &fi[i].noDataCount);
       
       // Min/Max nur für gültige Werte (nicht für NoData-Ersatzwerte)
@@ -454,7 +449,7 @@ int main(int argc, char *argv[])
     fclose(InFile);
   }
 
-  // PARALLELISIERTE BATCH-VERARBEITUNG - Ersetzt die ursprüngliche Schleife
+  // PARALLELISIERTE BATCH-VERARBEITUNG
   int processingResult = processFilesParallel(fi, iNumFilesToConvert, opts);
   
   if (processingResult != 0) {
@@ -474,7 +469,6 @@ int main(int argc, char *argv[])
   free(fi);
   fi = NULL;
   
-  // Free sCurrentFilename arrays (both Single-File and Filelist mode)
   for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
     if (sCurrentFilename[cleanup] != NULL) {
       free(sCurrentFilename[cleanup]);
@@ -584,7 +578,7 @@ void* processFileWorker(void* arg) {
 
     // PROCEDURAL DETAIL GENERATION
     if (opts->enableDetail) {
-        // Korrekte NoData-Behandlung für Worker-Thread
+        // NoData-Behandlung für Worker-Thread
         int threadNoDataCount = 0;
         for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++) {
             iElevationData[pre] = processElevationValue(iElevationData[pre], fi->hgtType, &threadNoDataCount);
@@ -681,7 +675,7 @@ void* processFileWorker(void* arg) {
             if (clampedElevation > effectiveMaxHeight) clampedElevation = effectiveMaxHeight;
             
             normalizedValue = (float)(clampedElevation - effectiveMinHeight) / 
-                             (float)(effectiveMaxHeight - effectiveMinHeight);
+                              (float)(effectiveMaxHeight - effectiveMinHeight);
         }
         
         // Kurven-Mapping anwenden
@@ -782,7 +776,7 @@ int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, Pro
     int fileIndex = 0;
     while (fileIndex < iNumFilesToConvert && globalResult == 0) {
         int threadsToStart = (iNumFilesToConvert - fileIndex > actualThreads) ? 
-                           actualThreads : (iNumFilesToConvert - fileIndex);
+                              actualThreads : (iNumFilesToConvert - fileIndex);
         
         // Threads starten
         for (int t = 0; t < threadsToStart; t++) {
@@ -847,7 +841,7 @@ int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, P
     return 0;
 }
 
-// NEUE FUNKTIONEN FÜR PROCEDURAL DETAIL GENERATION
+// PROCEDURAL DETAIL GENERATION
 
 // Simple Noise-Funktion (Perlin-ähnlich)
 float SimpleNoise(int x, int y, int seed) {
@@ -1009,7 +1003,7 @@ int extractGeoBounds(const char* filename, float* south, float* north, float* we
     *west = (lonHemisphere == 'E') ? (float)lonDegrees : -(float)(lonDegrees + 1);
     *east = (lonHemisphere == 'E') ? (float)(lonDegrees + 1) : -(float)lonDegrees;
     
-    return 1;  // Erfolgreich
+    return 1;
 }
 
 // Hauptfunktion für Procedural Detail Generation
