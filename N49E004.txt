@@ -1,0 +1,23 @@
+HGT2PNG Metadata
+================
+
+Source File: N49E004.hgt
+PNG File: N49E004.png
+
+Image Dimensions:
+  Width:  3601 pixels
+  Height: 3601 pixels
+
+Elevation Data:
+  Effective Range: 100 - 400 meters
+  Original Range:  0 - 0 meters
+  Total Range:     300 meters
+
+Blender Scaling (Displacement Setup):
+  Pixel Pitch: 90.000000 meters/pixel
+  World Size:  324090.00 x 324090.00 meters
+  Scale Factor: 3
+
+Geographic Coordinates:
+  Bounds: 49.000000°N to 50.000000°N, 4.000000°E to 5.000000°E
+  Center: 49.500000°N, 4.500000°E

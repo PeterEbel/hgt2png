@@ -45,6 +45,12 @@ typedef enum {
   CURVE_LOG = 1
 } CurveType;
 
+typedef enum {
+  METADATA_NONE = 0,
+  METADATA_JSON = 1,
+  METADATA_TXT = 2
+} MetadataFormat;
+
 typedef struct {
   int scaleFactor;
   float detailIntensity;
@@ -59,6 +65,7 @@ typedef struct {
   CurveType curveType;  // Kurventyp (linear/log)
   int minHeight;    // Minimale Höhe für Mapping (-1 = Auto)
   int maxHeight;    // Maximale Höhe für Mapping (-1 = Auto)
+  MetadataFormat metadataFormat;  // Metadata-Format (none/json/txt)
 } ProgramOptions;
 
 // Threading-Strukturen für Parallelisierung
@@ -118,6 +125,9 @@ float GetPixelDistance(int hgtType);
 float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType);
 float GetHeightTypeFactor(short int height);
 float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
+int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east);
+void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
+                       int effectiveMinHeight, int effectiveMaxHeight);
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType);
 
@@ -697,6 +707,10 @@ void* processFileWorker(void* arg) {
     } else {
         WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
     }
+    
+    // Metadata-Datei schreiben (falls aktiviert)
+    writeMetadataFile(OutputHeightmapFile, opts, fi, effectiveMinHeight, effectiveMaxHeight);
+    
     pthread_mutex_unlock(data->outputMutex);
 
     // Cleanup für diesen Thread
@@ -966,6 +980,38 @@ float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma)
     return result;
 }
 
+// Extrahiert geografische Grenzen aus HGT-Dateinamen (z.B. "N49E004.hgt" -> lat 49-50, lon 4-5)
+int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east) {
+    // Extrahiere Dateinamen ohne Pfad
+    const char* basename = strrchr(filename, '/');
+    if (basename) basename++; else basename = filename;
+    
+    // Erwarte Format: [N|S]DDEEEE[E|W].hgt (z.B. N49E004.hgt)
+    if (strlen(basename) < 7) return 0;
+    
+    // Latitude parsen
+    char latHemisphere = basename[0];
+    if (latHemisphere != 'N' && latHemisphere != 'S') return 0;
+    
+    int latDegrees = (basename[1] - '0') * 10 + (basename[2] - '0');
+    if (latDegrees < 0 || latDegrees > 90) return 0;
+    
+    *south = (latHemisphere == 'N') ? (float)latDegrees : -(float)(latDegrees + 1);
+    *north = (latHemisphere == 'N') ? (float)(latDegrees + 1) : -(float)latDegrees;
+    
+    // Longitude parsen
+    char lonHemisphere = basename[3];
+    if (lonHemisphere != 'E' && lonHemisphere != 'W') return 0;
+    
+    int lonDegrees = (basename[4] - '0') * 100 + (basename[5] - '0') * 10 + (basename[6] - '0');
+    if (lonDegrees < 0 || lonDegrees > 180) return 0;
+    
+    *west = (lonHemisphere == 'E') ? (float)lonDegrees : -(float)(lonDegrees + 1);
+    *east = (lonHemisphere == 'E') ? (float)(lonDegrees + 1) : -(float)lonDegrees;
+    
+    return 1;  // Erfolgreich
+}
+
 // Hauptfunktion für Procedural Detail Generation
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType) {
@@ -1132,6 +1178,7 @@ void initDefaultOptions(ProgramOptions *opts) {
     opts->curveType = CURVE_LINEAR;  // Standard: Lineare Kurve
     opts->minHeight = -1;   // Auto-Erkennung
     opts->maxHeight = -1;   // Auto-Erkennung
+    opts->metadataFormat = METADATA_NONE;  // Standard: Keine Metadata
 }
 
 // Zeige Hilfe-Text
@@ -1155,6 +1202,8 @@ void showHelp(const char *programName) {
     printf("  -c, --curve <type>       Mapping curve: linear|log (default: linear)\n");
     printf("  -m, --min-height <n>     Minimum elevation for mapping (default: auto)\n");
     printf("  -M, --max-height <n>     Maximum elevation for mapping (default: auto)\n");
+    printf("  -x, --metadata <format>  Generate sidecar metadata: json|txt|none (default: none)\n");
+    printf("                           Contains elevation range, pixel pitch, and geo coordinates\n");
     printf("  -h, --help               Show this help message\n");
     printf("  -v, --version            Show version information\n\n");
     
@@ -1196,12 +1245,13 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {"curve",            required_argument, 0, 'c'},
         {"min-height",       required_argument, 0, 'm'},
         {"max-height",       required_argument, 0, 'M'},
+        {"metadata",         required_argument, 0, 'x'},
         {"help",             no_argument,       0, 'h'},
         {"version",          no_argument,       0, 'v'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6g:c:m:M:hv", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6g:c:m:M:x:hv", long_options, NULL)) != -1) {
         switch (c) {
             case 's':
                 opts->scaleFactor = atoi(optarg);
@@ -1274,6 +1324,19 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
                 }
                 break;
                 
+            case 'x':
+                if (strcmp(optarg, "json") == 0) {
+                    opts->metadataFormat = METADATA_JSON;
+                } else if (strcmp(optarg, "txt") == 0) {
+                    opts->metadataFormat = METADATA_TXT;
+                } else if (strcmp(optarg, "none") == 0) {
+                    opts->metadataFormat = METADATA_NONE;
+                } else {
+                    fprintf(stderr, "Error: Metadata format must be 'json', 'txt', or 'none'\n");
+                    return 1;
+                }
+                break;
+                
             case 'h':
                 opts->showHelp = 1;
                 return 0;
@@ -1297,4 +1360,130 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
     }
 
     return 0;
+}
+
+// Schreibt Metadata-Sidecar-Datei für präzises Blender-Scaling
+void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
+                       int effectiveMinHeight, int effectiveMaxHeight) {
+    
+    if (opts->metadataFormat == METADATA_NONE) return;
+    
+    // Metadata-Dateiname generieren
+    char metadataFilename[512];
+    strcpy(metadataFilename, pngFilename);
+    
+    // PNG-Extension ersetzen
+    char* dot = strrchr(metadataFilename, '.');
+    if (dot) {
+        if (opts->metadataFormat == METADATA_JSON) {
+            strcpy(dot, ".json");
+        } else {
+            strcpy(dot, ".txt");
+        }
+    } else {
+        if (opts->metadataFormat == METADATA_JSON) {
+            strcat(metadataFilename, ".json");
+        } else {
+            strcat(metadataFilename, ".txt");
+        }
+    }
+    
+    // Geografische Bounds extrahieren
+    float south, north, west, east;
+    int hasGeoBounds = extractGeoBounds(fi->szFilename, &south, &north, &west, &east);
+    
+    // Pixel-Pitch berechnen (Meter pro Pixel)
+    float pixelPitchMeters = 30.0f;  // Default SRTM-1
+    if (fi->hgtType == HGT_TYPE_90) {
+        pixelPitchMeters = 90.0f;  // SRTM-3
+    } else if (fi->hgtType == HGT_TYPE_30) {
+        pixelPitchMeters = 30.0f;  // SRTM-1
+    }
+    
+    // Bei Procedural Detail: Pixel-Pitch durch Scale-Faktor teilen
+    if (opts->enableDetail && opts->scaleFactor > 1) {
+        pixelPitchMeters /= (float)opts->scaleFactor;
+    }
+    
+    FILE* metadataFile = fopen(metadataFilename, "w");
+    if (!metadataFile) {
+        fprintf(stderr, "WARNING: Could not write metadata file %s\n", metadataFilename);
+        return;
+    }
+    
+    if (opts->metadataFormat == METADATA_JSON) {
+        // JSON-Format für maschinelle Verarbeitung
+        fprintf(metadataFile, "{\n");
+        fprintf(metadataFile, "  \"source_file\": \"%s\",\n", fi->szFilename);
+        fprintf(metadataFile, "  \"png_file\": \"%s\",\n", pngFilename);
+        fprintf(metadataFile, "  \"dimensions\": {\n");
+        fprintf(metadataFile, "    \"width\": %d,\n", fi->iWidth);
+        fprintf(metadataFile, "    \"height\": %d\n", fi->iHeight);
+        fprintf(metadataFile, "  },\n");
+        fprintf(metadataFile, "  \"elevation\": {\n");
+        fprintf(metadataFile, "    \"min_meters\": %d,\n", effectiveMinHeight);
+        fprintf(metadataFile, "    \"max_meters\": %d,\n", effectiveMaxHeight);
+        fprintf(metadataFile, "    \"range_meters\": %d,\n", effectiveMaxHeight - effectiveMinHeight);
+        fprintf(metadataFile, "    \"original_min\": %d,\n", fi->iMinElevation);
+        fprintf(metadataFile, "    \"original_max\": %d\n", fi->iMaxElevation);
+        fprintf(metadataFile, "  },\n");
+        fprintf(metadataFile, "  \"scaling\": {\n");
+        fprintf(metadataFile, "    \"pixel_pitch_meters\": %.6f,\n", pixelPitchMeters);
+        fprintf(metadataFile, "    \"scale_factor\": %d,\n", opts->scaleFactor);
+        fprintf(metadataFile, "    \"world_size_meters\": {\n");
+        fprintf(metadataFile, "      \"width\": %.2f,\n", fi->iWidth * pixelPitchMeters);
+        fprintf(metadataFile, "      \"height\": %.2f\n", fi->iHeight * pixelPitchMeters);
+        fprintf(metadataFile, "    }\n");
+        fprintf(metadataFile, "  }");
+        
+        if (hasGeoBounds) {
+            fprintf(metadataFile, ",\n");
+            fprintf(metadataFile, "  \"geographic\": {\n");
+            fprintf(metadataFile, "    \"bounds\": {\n");
+            fprintf(metadataFile, "      \"south\": %.6f,\n", south);
+            fprintf(metadataFile, "      \"north\": %.6f,\n", north);
+            fprintf(metadataFile, "      \"west\": %.6f,\n", west);
+            fprintf(metadataFile, "      \"east\": %.6f\n", east);
+            fprintf(metadataFile, "    },\n");
+            fprintf(metadataFile, "    \"center\": {\n");
+            fprintf(metadataFile, "      \"latitude\": %.6f,\n", (south + north) / 2.0f);
+            fprintf(metadataFile, "      \"longitude\": %.6f\n", (west + east) / 2.0f);
+            fprintf(metadataFile, "    }\n");
+            fprintf(metadataFile, "  }\n");
+        } else {
+            fprintf(metadataFile, "\n");
+        }
+        
+        fprintf(metadataFile, "}\n");
+    } else {
+        // TXT-Format für Menschen lesbar
+        fprintf(metadataFile, "HGT2PNG Metadata\n");
+        fprintf(metadataFile, "================\n\n");
+        fprintf(metadataFile, "Source File: %s\n", fi->szFilename);
+        fprintf(metadataFile, "PNG File: %s\n", pngFilename);
+        fprintf(metadataFile, "\nImage Dimensions:\n");
+        fprintf(metadataFile, "  Width:  %d pixels\n", fi->iWidth);
+        fprintf(metadataFile, "  Height: %d pixels\n", fi->iHeight);
+        fprintf(metadataFile, "\nElevation Data:\n");
+        fprintf(metadataFile, "  Effective Range: %d - %d meters\n", effectiveMinHeight, effectiveMaxHeight);
+        fprintf(metadataFile, "  Original Range:  %d - %d meters\n", fi->iMinElevation, fi->iMaxElevation);
+        fprintf(metadataFile, "  Total Range:     %d meters\n", effectiveMaxHeight - effectiveMinHeight);
+        fprintf(metadataFile, "\nBlender Scaling (Displacement Setup):\n");
+        fprintf(metadataFile, "  Pixel Pitch: %.6f meters/pixel\n", pixelPitchMeters);
+        fprintf(metadataFile, "  World Size:  %.2f x %.2f meters\n", 
+                fi->iWidth * pixelPitchMeters, fi->iHeight * pixelPitchMeters);
+        fprintf(metadataFile, "  Scale Factor: %d\n", opts->scaleFactor);
+        
+        if (hasGeoBounds) {
+            fprintf(metadataFile, "\nGeographic Coordinates:\n");
+            fprintf(metadataFile, "  Bounds: %.6f°N to %.6f°N, %.6f°E to %.6f°E\n", south, north, west, east);
+            fprintf(metadataFile, "  Center: %.6f°N, %.6f°E\n", (south + north) / 2.0f, (west + east) / 2.0f);
+        }
+    }
+    
+    fclose(metadataFile);
+    
+    if (opts->verbose) {
+        fprintf(stderr, "INFO: Wrote metadata file %s\n", metadataFilename);
+    }
 }
