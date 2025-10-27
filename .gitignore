@@ -7,3 +7,5 @@ terrain.txt
 *.hgt
 *.png
 hgt2png
+*.json
+*.txt
