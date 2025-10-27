@@ -64,6 +64,7 @@ typedef struct {
   int minHeight;                  // Minimale Höhe für Mapping (-1 = Auto)
   int maxHeight;                  // Maximale Höhe für Mapping (-1 = Auto)
   MetadataFormat metadataFormat;  // Metadata-Format (none/json/txt)
+  int alphaNoData;                // Option für transparente NoData-Pixel
 } ProgramOptions;
 
 // Threading-Strukturen für Parallelisierung
@@ -91,6 +92,13 @@ typedef struct tag_RGB {
   unsigned char b;
 } RGB, *pRGB;
 
+typedef struct tag_RGBA {
+  unsigned char r;
+  unsigned char g;
+  unsigned char b;
+  unsigned char a;
+} RGBA, *pRGBA;
+
 typedef struct tag_FileInfoHGT {
   char szFilename[_MAX_PATH];
   short int iWidth;
@@ -107,6 +115,7 @@ RGB *PixelData;
 
 void WritePNG(const char *, short int, short int);
 void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHeight, RGB* pixelData);
+void WritePNGWithAlpha(const char *szFilename, short int _iWidth, short int _iHeight, RGBA* pixelData);
 void WritePNG16BitGrayscale(const char *szFilename, short int _iWidth, short int _iHeight, unsigned short* pixelData);
 
 // Parameter-Management Funktionen
@@ -504,6 +513,26 @@ void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHei
   png_image_free(&image);
 }
 
+void WritePNGWithAlpha(const char *szFilename, short int _iWidth, short int _iHeight, RGBA* pixelData)
+{
+  png_image image; 
+
+  memset(&image, 0, sizeof image);
+
+  image.version = PNG_IMAGE_VERSION;
+  image.format = PNG_FORMAT_RGBA;  // RGBA mit Alpha-Kanal
+  image.width = _iWidth;
+  image.height = _iHeight;
+
+  fprintf(stderr, "Info: Writing RGBA %s\n", szFilename);
+  if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) pixelData, 0/*row_stride*/, NULL/*colormap*/))
+  {
+    fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+  }
+
+  png_image_free(&image);
+}
+
 void WritePNG16BitGrayscale(const char *szFilename, short int _iWidth, short int _iHeight, unsigned short* pixelData)
 {
   png_image image; 
@@ -533,6 +562,7 @@ void* processFileWorker(void* arg) {
     FILE* InFile = NULL;
     short* iElevationData = NULL;
     RGB* PixelData = NULL;
+    RGBA* PixelDataRGBA = NULL;  // Neue RGBA-Daten für Alpha-Support
     int iNumIntRead;
     char OutputHeightmapFile[256];
     
@@ -633,6 +663,18 @@ void* processFileWorker(void* arg) {
             *(data->globalResult) = 1;
             return NULL;
         }
+    } else if (opts->alphaNoData) {
+        // 8-Bit RGBA-Daten für Alpha-Support
+        if ((PixelDataRGBA = (RGBA*)malloc(pixelCount * sizeof(struct tag_RGBA))) == NULL) {
+            pthread_mutex_lock(data->outputMutex);
+            fprintf(stderr, "Error: Can't allocate RGBA pixel data block for %s (%lu pixels)\n", 
+                    fi->szFilename, pixelCount);
+            pthread_mutex_unlock(data->outputMutex);
+            free(iElevationData);
+            iElevationData = NULL;
+            *(data->globalResult) = 1;
+            return NULL;
+        }
     } else {
         // 8-Bit RGB-Daten
         if ((PixelData = (RGB*)malloc(pixelCount * sizeof(struct tag_RGB))) == NULL) {
@@ -666,6 +708,9 @@ void* processFileWorker(void* arg) {
             fi->noDataCount += threadNoDataCount;  // Thread-safe da sequentiell
         }
 
+        // Prüfe auf NoData-Pixel (für Alpha-Transparenz)
+        int isNoDataPixel = (iElevationData[m] == NODATA_REPLACEMENT);
+        
         // Normalisierung auf 0.0-1.0 mit Custom-Range
         float normalizedValue = 0.5f;  // Fallback
         if (effectiveMaxHeight > effectiveMinHeight) {
@@ -684,6 +729,13 @@ void* processFileWorker(void* arg) {
         if (opts->output16bit) {
             // 16-Bit Grayscale: Volle 16-Bit-Range nutzen (0-65535)
             PixelData16[m] = (unsigned short)(curvedValue * 65535.0f);
+        } else if (opts->alphaNoData) {
+            // 8-Bit RGBA: Mit Alpha-Kanal für NoData-Transparenz
+            unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
+            PixelDataRGBA[m].r = pixelValue;
+            PixelDataRGBA[m].g = pixelValue;
+            PixelDataRGBA[m].b = pixelValue;
+            PixelDataRGBA[m].a = isNoDataPixel ? 0 : 255;  // Transparent für NoData, opaque für gültige Daten
         } else {
             // 8-Bit RGB: Kurven-korrigierte Berechnung
             unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
@@ -698,6 +750,8 @@ void* processFileWorker(void* arg) {
     pthread_mutex_lock(data->outputMutex);
     if (opts->output16bit) {
         WritePNG16BitGrayscale(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16);
+    } else if (opts->alphaNoData) {
+        WritePNGWithAlpha(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelDataRGBA);
     } else {
         WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
     }
@@ -713,6 +767,9 @@ void* processFileWorker(void* arg) {
     if (opts->output16bit) {
         free(PixelData16);
         PixelData16 = NULL;
+    } else if (opts->alphaNoData) {
+        free(PixelDataRGBA);  // Thread-lokale RGBA-Daten freigeben
+        PixelDataRGBA = NULL;
     } else {
         free(PixelData);  // Thread-lokale PixelData freigeben
         PixelData = NULL;
@@ -1173,6 +1230,7 @@ void initDefaultOptions(ProgramOptions *opts) {
     opts->minHeight = -1;   // Auto-Erkennung
     opts->maxHeight = -1;   // Auto-Erkennung
     opts->metadataFormat = METADATA_NONE;  // Standard: Keine Metadata
+    opts->alphaNoData = 0;  // Standard: Keine transparenten NoData-Pixel
 }
 
 // Zeige Hilfe-Text
@@ -1192,6 +1250,7 @@ void showHelp(const char *programName) {
     printf("  -d, --disable-detail     Disable procedural detail generation\n");
     printf("  -q, --quiet              Suppress verbose output\n");
     printf("      --16bit              Generate 16-bit grayscale PNG (better for displacement maps)\n");
+    printf("      --alpha-nodata       Generate RGBA PNG with transparent NoData pixels\n");
     printf("  -g, --gamma <f>          Gamma correction curve (default: 1.0, range: 0.1-10.0)\n");
     printf("  -c, --curve <type>       Mapping curve: linear|log (default: linear)\n");
     printf("  -m, --min-height <n>     Minimum elevation for mapping (default: auto)\n");
@@ -1210,6 +1269,7 @@ void showHelp(const char *programName) {
     printf("  %s -s 2 -i 25.0 N48E011.hgt             # 2x scale, high detail\n", programName);
     printf("  %s -t 8 terrain_files.txt               # 8 parallel threads\n", programName);
     printf("  %s -d -q terrain_files.txt              # No detail, quiet mode\n", programName);
+    printf("  %s --alpha-nodata --metadata json terrain.hgt  # Transparent NoData with metadata\n", programName);
     printf("  %s --threads 4 --scale-factor 3 --detail-intensity 10  # Parallel + custom\n\n", programName);
     
     printf("OUTPUT:\n");
@@ -1235,6 +1295,7 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {"disable-detail",   no_argument,       0, 'd'},
         {"quiet",            no_argument,       0, 'q'},
         {"16bit",            no_argument,       0, '6'},
+        {"alpha-nodata",     no_argument,       0, 'a'},
         {"gamma",            required_argument, 0, 'g'},
         {"curve",            required_argument, 0, 'c'},
         {"min-height",       required_argument, 0, 'm'},
@@ -1245,7 +1306,7 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6g:c:m:M:x:hv", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6ag:c:m:M:x:hv", long_options, NULL)) != -1) {
         switch (c) {
             case 's':
                 opts->scaleFactor = atoi(optarg);
@@ -1285,6 +1346,10 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
                 
             case '6':
                 opts->output16bit = 1;
+                break;
+                
+            case 'a':
+                opts->alphaNoData = 1;
                 break;
                 
             case 'g':
