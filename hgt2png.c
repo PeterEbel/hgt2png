@@ -198,6 +198,7 @@ int main(int argc, char *argv[])
     if (opts.verbose) fprintf(stderr, "INFO: Filelist Mode\n");
     if ((FileList = fopen(inputFile, "rb")) == NULL) {
       fprintf(stderr, "Error: Can't open file list %s\n", inputFile);
+      // sCurrentFilename[0] wurde in diesem Pfad nicht allokiert
       return 1;
     }
 
@@ -220,6 +221,7 @@ int main(int argc, char *argv[])
             // Cleanup bereits allokierter Filenames
             for (int cleanup = 0; cleanup < f; cleanup++) {
               free(sCurrentFilename[cleanup]);
+              sCurrentFilename[cleanup] = NULL;
             }
             fclose(FileList);
             return 1;
@@ -243,6 +245,13 @@ int main(int argc, char *argv[])
   if ((fi = (FileInfo *) malloc(iNumFilesToConvert * sizeof(struct tag_FileInfoHGT))) == NULL)
   {
     fprintf(stderr, "Error: Can't allocate FileInfo array\n");
+    // Cleanup bereits allokierter Filenames
+    for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+      if (sCurrentFilename[cleanup] != NULL) {
+        free(sCurrentFilename[cleanup]);
+        sCurrentFilename[cleanup] = NULL;
+      }
+    }
     return 1;
   }
 
@@ -267,6 +276,15 @@ int main(int argc, char *argv[])
 
     if ((InFile = fopen(fi[i].szFilename, "rb")) == NULL) {
       fprintf(stderr, "Error: Can't open input file %s\n", fi[i].szFilename);
+      // Cleanup allocated memory
+      for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+        if (sCurrentFilename[cleanup] != NULL) {
+          free(sCurrentFilename[cleanup]);
+          sCurrentFilename[cleanup] = NULL;
+        }
+      }
+      free(fi);
+      fi = NULL;
       return 1;
     }
 
@@ -294,11 +312,21 @@ int main(int argc, char *argv[])
       fi[i].iHeight = atoi(sTmp);
       fi[i].hgtType = fi[i].iWidth * fi[i].iHeight;  // Pro-Datei statt global
       free(sCurrentFilename[i]);
+      sCurrentFilename[i] = NULL;
     }
 
     if (fi[i].hgtType == HGT_TYPE_UNKNOWN) {  // Pro-Datei Überprüfung
       fprintf(stderr, "Error: %s has an unknown HGT type\n", fi[i].szFilename);
       fclose(InFile);
+      // Cleanup allocated memory
+      for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+        if (sCurrentFilename[cleanup] != NULL) {
+          free(sCurrentFilename[cleanup]);
+          sCurrentFilename[cleanup] = NULL;
+        }
+      }
+      free(fi);
+      fi = NULL;
       return 1;
     }
 
@@ -306,13 +334,33 @@ int main(int argc, char *argv[])
     {
       fprintf(stderr, "Error: Can't allocate memory to load %s\n", fi[i].szFilename);
       fclose(InFile);
+      // Cleanup allocated memory
+      for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+        if (sCurrentFilename[cleanup] != NULL) {
+          free(sCurrentFilename[cleanup]);
+          sCurrentFilename[cleanup] = NULL;
+        }
+      }
+      free(fi);
+      fi = NULL;
       return 1;
     }
 
     if ((iNumIntRead = fread(iElevationData, 1, fi[i].ulFilesize, InFile)) != (int)fi[i].ulFilesize)
     {
       fprintf(stderr, "Error: Can't load elevation data\n");
+      free(iElevationData);
+      iElevationData = NULL;
       fclose(InFile);
+      // Cleanup allocated memory
+      for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
+        if (sCurrentFilename[cleanup] != NULL) {
+          free(sCurrentFilename[cleanup]);
+          sCurrentFilename[cleanup] = NULL;
+        }
+      }
+      free(fi);
+      fi = NULL;
       return 1;
     } 
 
@@ -349,6 +397,7 @@ int main(int argc, char *argv[])
     }
     
     free(iElevationData);
+    iElevationData = NULL;
     fclose(InFile);
   }
 
@@ -360,14 +409,17 @@ int main(int argc, char *argv[])
     for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
       if (sCurrentFilename[cleanup] != NULL) {
         free(sCurrentFilename[cleanup]);
+        sCurrentFilename[cleanup] = NULL;
       }
     }
     free(fi);
+    fi = NULL;
     return processingResult;
   }
 
   // Cleanup allocated memory
   free(fi);
+  fi = NULL;
   
   // Free sCurrentFilename arrays (both Single-File and Filelist mode)
   for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
@@ -431,7 +483,7 @@ void* processFileWorker(void* arg) {
         fprintf(stderr, "Error: Can't open input file %s\n", fi->szFilename);
         pthread_mutex_unlock(data->outputMutex);
         *(data->globalResult) = 1;
-        return NULL;
+        return NULL; // Kein Speicher zu leaken hier
     }
 
     // Speicher für Elevation Data allokieren
@@ -441,7 +493,7 @@ void* processFileWorker(void* arg) {
         pthread_mutex_unlock(data->outputMutex);
         fclose(InFile);
         *(data->globalResult) = 1;
-        return NULL;
+        return NULL; // File wurde geschlossen, kein Speicher allokiert
     }
 
     // Elevation Data lesen
@@ -451,6 +503,7 @@ void* processFileWorker(void* arg) {
         pthread_mutex_unlock(data->outputMutex);
         fclose(InFile);
         free(iElevationData);
+        iElevationData = NULL;
         *(data->globalResult) = 1;
         return NULL;
     }
@@ -505,6 +558,7 @@ void* processFileWorker(void* arg) {
                 fi->szFilename, pixelCount);
         pthread_mutex_unlock(data->outputMutex);
         free(iElevationData);
+        iElevationData = NULL;
         *(data->globalResult) = 1;
         return NULL;
     }
@@ -537,7 +591,9 @@ void* processFileWorker(void* arg) {
 
     // Cleanup für diesen Thread
     free(iElevationData);
+    iElevationData = NULL;
     free(PixelData);  // Thread-lokale PixelData freigeben
+    PixelData = NULL;
     
     // Fortschrittszähler aktualisieren
     pthread_mutex_lock(data->outputMutex);
