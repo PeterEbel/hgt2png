@@ -89,6 +89,7 @@ FileInfo *fi;
 RGB *PixelData;
 
 void WritePNG(const char *, short int, short int);
+void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHeight, RGB* pixelData);
 
 // Parameter-Management Funktionen
 void initDefaultOptions(ProgramOptions *opts);
@@ -109,6 +110,9 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
 void* processFileWorker(void* arg);
 int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
 int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
+
+// Hilfsfunktion: Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
+void generateOutputFilename(const char* inputPath, char* outputPath);
 
 const int HGT_TYPE_30 = 1201;
 const int HGT_TYPE_90 = 3601;
@@ -353,6 +357,11 @@ int main(int argc, char *argv[])
 
 void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
 {
+  WritePNGWithData(szFilename, _iWidth, _iHeight, PixelData);
+}
+
+void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHeight, RGB* pixelData)
+{
   png_image image; 
 
   memset(&image, 0, sizeof image);
@@ -363,13 +372,12 @@ void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
   image.height = _iHeight;
 
   fprintf(stderr, "Info: Writing %s\n", szFilename);
-  if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) PixelData, 0/*row_stride*/, NULL/*colormap*/))
+  if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) pixelData, 0/*row_stride*/, NULL/*colormap*/))
   {
     fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
   }
 
   png_image_free(&image);
-
 }
 
 // PARALLELISIERUNG - Worker-Thread Funktion
@@ -485,17 +493,12 @@ void* processFileWorker(void* arg) {
         }
     }
 
-    // PNG Output-Dateiname generieren
-    strcpy(OutputHeightmapFile, fi->szFilename);
-    OutputHeightmapFile[strlen(OutputHeightmapFile) - 4] = '\0';
-    strcat(OutputHeightmapFile, ".png");
+    // PNG Output-Dateiname generieren (nur Dateiname, nicht kompletter Pfad)
+    generateOutputFilename(fi->szFilename, OutputHeightmapFile);
     
-    // PNG schreiben (WritePNG ist nicht thread-safe wegen globaler PixelData, das muss synchronisiert werden)
+    // PNG schreiben (thread-safe mit lokalen PixelData)
     pthread_mutex_lock(data->outputMutex);
-    RGB* tempPixelData = PixelData;  // Globale Variable temporär sichern
-    PixelData = PixelData;  // Thread-lokale PixelData zur globalen Variable machen
-    WritePNG(OutputHeightmapFile, fi->iWidth, fi->iHeight);
-    PixelData = tempPixelData;  // Globale Variable zurücksetzen
+    WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
     pthread_mutex_unlock(data->outputMutex);
 
     // Cleanup für diesen Thread
@@ -770,6 +773,31 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
     }
     
     return detailedData;
+}
+
+// HILFSFUNKTIONEN
+
+// Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
+void generateOutputFilename(const char* inputPath, char* outputPath) {
+    const char* filename = inputPath;
+    const char* lastSlash = strrchr(inputPath, '/');
+    
+    // Wenn ein Pfad-Separator gefunden wurde, nimm den Teil danach
+    if (lastSlash != NULL) {
+        filename = lastSlash + 1;
+    }
+    
+    // Kopiere den Dateinamen und ersetze die Endung
+    strcpy(outputPath, filename);
+    
+    // Finde die letzte .hgt Endung und ersetze sie durch .png
+    char* extension = strrchr(outputPath, '.');
+    if (extension != NULL && (strcmp(extension, ".hgt") == 0 || strcmp(extension, ".HGT") == 0)) {
+        strcpy(extension, ".png");
+    } else {
+        // Falls keine .hgt Endung gefunden wurde, hänge .png an
+        strcat(outputPath, ".png");
+    }
 }
 
 // PARAMETER-MANAGEMENT FUNKTIONEN
