@@ -9,3 +9,5 @@ terrain.txt
 hgt2png
 *.json
 *.txt
+asc2hgt.c
+create_terrain.py
