@@ -121,10 +121,10 @@ FileInfo *fi;
 RGB *PixelData;
 
 void WritePNG(const char *, size_t, size_t);
-static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData);
-static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData);
-static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData);
-static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA16* pixelData);
+static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGB* pixelData);
+static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA* pixelData);
+static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, const uint16_t* pixelData);
+static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA16* pixelData);
 
 // Parameter-Management Funktionen
 static void initDefaultOptions(ProgramOptions *opts);
@@ -178,15 +178,15 @@ static void* safe_malloc_pixels(size_t width, size_t height, size_t element_size
 // Neue Funktionen für Procedural Detail Generation
 static float SimpleNoise(int x, int y, int seed);
 static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
-static short int BilinearInterpolate(short int* data, int width, int height, float x, float y);
+static short int BilinearInterpolate(const short int* data, int width, int height, float x, float y);
 static float GetPixelDistance(int hgtType);
-static float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType);
+static float CalculateLocalSlope(const short int* data, int width, int height, float x, float y, int hgtType);
 static float GetHeightTypeFactor(short int height);
 static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
 static int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east);
-static void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
+static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opts, const struct tag_FileInfoHGT* fi, 
                        int effectiveMinHeight, int effectiveMaxHeight);
-static short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
+static short int* AddProceduralDetail(const short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType);
 
 // Funktionen für Parallelisierung
@@ -553,7 +553,7 @@ void WritePNG(const char *szFilename, size_t _iWidth, size_t _iHeight)
   WritePNGWithData(szFilename, _iWidth, _iHeight, PixelData);
 }
 
-static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData)
+static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGB* pixelData)
 {
   png_image image; 
 
@@ -573,7 +573,7 @@ static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHe
   png_image_free(&image);
 }
 
-static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData)
+static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA* pixelData)
 {
   png_image image; 
 
@@ -593,7 +593,7 @@ static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iH
   png_image_free(&image);
 }
 
-static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData)
+static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, const uint16_t* pixelData)
 {
   png_image image; 
 
@@ -613,7 +613,7 @@ static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_
   png_image_free(&image);
 }
 
-static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA16* pixelData)
+static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA16* pixelData)
 {
   png_image image; 
 
@@ -1057,7 +1057,7 @@ static float FractalNoise(float x, float y, int octaves, float persistence, floa
 }
 
 // Bilineare Interpolation
-static short int BilinearInterpolate(short int* data, int width, int height, float x, float y) {
+static short int BilinearInterpolate(const short int* data, int width, int height, float x, float y) {
     int x1 = (int)x;
     int y1 = (int)y;
     int x2 = x1 + 1;
@@ -1098,7 +1098,7 @@ static float GetPixelDistance(int hgtType) {
     }
 }
 
-static float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType) {
+static float CalculateLocalSlope(const short int* data, int width, int height, float x, float y, int hgtType) {
     int ix = (int)x;
     int iy = (int)y;
     
@@ -1196,7 +1196,7 @@ static int extractGeoBounds(const char* filename, float* south, float* north, fl
 }
 
 // Hauptfunktion für Procedural Detail Generation
-static short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
+static short int* AddProceduralDetail(const short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType) {
     
     size_t newWidth, newHeight;
@@ -1555,7 +1555,7 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
 }
 
 // Schreibt Metadata-Sidecar-Datei für präzises Blender-Scaling
-static void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag_FileInfoHGT* fi, 
+static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opts, const struct tag_FileInfoHGT* fi, 
                        int effectiveMinHeight, int effectiveMaxHeight) {
     
     if (opts->metadataFormat == METADATA_NONE) return;
