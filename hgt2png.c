@@ -17,6 +17,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdint.h>  // Für SIZE_MAX
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -101,11 +102,11 @@ typedef struct tag_RGBA {
 
 typedef struct tag_FileInfoHGT {
   char szFilename[_MAX_PATH];
-  short int iWidth;
-  short int iHeight;
+  size_t iWidth;
+  size_t iHeight;
   short int iMinElevation;
   short int iMaxElevation;
-  unsigned long ulFilesize;
+  size_t ulFilesize;  // Auch diese sollte size_t sein
   int hgtType;              // Pro-Datei HGT-Typ statt globaler Variable
   int noDataCount;          // Anzahl NoData-Pixel für Statistik
 } FileInfo, *pFileInfo;
@@ -113,16 +114,59 @@ typedef struct tag_FileInfoHGT {
 FileInfo *fi;
 RGB *PixelData;
 
-void WritePNG(const char *, short int, short int);
-void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHeight, RGB* pixelData);
-void WritePNGWithAlpha(const char *szFilename, short int _iWidth, short int _iHeight, RGBA* pixelData);
-void WritePNG16BitGrayscale(const char *szFilename, short int _iWidth, short int _iHeight, unsigned short* pixelData);
+void WritePNG(const char *, size_t, size_t);
+void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData);
+void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData);
+void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, unsigned short* pixelData);
 
 // Parameter-Management Funktionen
 void initDefaultOptions(ProgramOptions *opts);
 void showHelp(const char *programName);
 void showVersion(void);
 int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile);
+
+// Sichere Multiplikation mit Überlaufdetektion
+int safe_multiply_size_t(size_t a, size_t b, size_t* result) {
+    if (a == 0 || b == 0) {
+        *result = 0;
+        return 1;
+    }
+    
+    // Überlaufcheck: wenn a * b > SIZE_MAX, dann a > SIZE_MAX / b
+    if (a > SIZE_MAX / b) {
+        return 0; // Überlauf erkannt
+    }
+    
+    *result = a * b;
+    return 1; // Erfolg
+}
+
+// Sichere malloc mit Überlaufschutz
+void* safe_malloc_pixels(size_t width, size_t height, size_t element_size) {
+    size_t pixel_count;
+    size_t total_bytes;
+    
+    // Erst width * height berechnen
+    if (!safe_multiply_size_t(width, height, &pixel_count)) {
+        fprintf(stderr, "Fehler: Pixelanzahl-Überlauf bei %zu x %zu\n", width, height);
+        return NULL;
+    }
+    
+    // Dann pixel_count * element_size
+    if (!safe_multiply_size_t(pixel_count, element_size, &total_bytes)) {
+        fprintf(stderr, "Fehler: Speichergröße-Überlauf bei %zu Pixeln × %zu Bytes\n", 
+                pixel_count, element_size);
+        return NULL;
+    }
+    
+    void* ptr = malloc(total_bytes);
+    if (!ptr) {
+        fprintf(stderr, "Fehler: malloc fehlgeschlagen für %zu Bytes (%zu×%zu×%zu)\n", 
+                total_bytes, width, height, element_size);
+    }
+    
+    return ptr;
+}
 
 // Neue Funktionen für Procedural Detail Generation
 float SimpleNoise(int x, int y, int seed);
@@ -367,10 +411,15 @@ int main(int argc, char *argv[])
           fprintf(stderr, "WARNING: Could not parse dimensions from filename %s\n", fi[i].szFilename);
         }
       } else {
-        // Zusätzliche Validation: Dateigröße muss mit Dimensionen übereinstimmen
-        unsigned long expectedSize = (unsigned long)fi[i].iWidth * fi[i].iHeight * 2; // 2 bytes per pixel
-        if (fi[i].ulFilesize != expectedSize) {
-          fprintf(stderr, "ERROR: Filesize mismatch for %s: expected %lu bytes (%dx%d), got %lu bytes\n", 
+        // Zusätzliche Validation: Dateigröße muss mit Dimensionen übereinstimmen (überlaufgeschützt)
+        size_t expectedPixels, expectedSize;
+        if (!safe_multiply_size_t(fi[i].iWidth, fi[i].iHeight, &expectedPixels) ||
+            !safe_multiply_size_t(expectedPixels, 2, &expectedSize)) {
+          fprintf(stderr, "ERROR: Dimension overflow for %s: %zu×%zu pixels\n", 
+                  fi[i].szFilename, fi[i].iWidth, fi[i].iHeight);
+          fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Als ungültig markieren
+        } else if (fi[i].ulFilesize != expectedSize) {
+          fprintf(stderr, "ERROR: Filesize mismatch for %s: expected %zu bytes (%zu×%zu), got %zu bytes\n", 
                   fi[i].szFilename, expectedSize, fi[i].iWidth, fi[i].iHeight, fi[i].ulFilesize);
           fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Als ungültig markieren
         }
@@ -493,12 +542,12 @@ int main(int argc, char *argv[])
 
 }
 
-void WritePNG(const char *szFilename, short int _iWidth, short int _iHeight)
+void WritePNG(const char *szFilename, size_t _iWidth, size_t _iHeight)
 {
   WritePNGWithData(szFilename, _iWidth, _iHeight, PixelData);
 }
 
-void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHeight, RGB* pixelData)
+void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData)
 {
   png_image image; 
 
@@ -518,7 +567,7 @@ void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHei
   png_image_free(&image);
 }
 
-void WritePNGWithAlpha(const char *szFilename, short int _iWidth, short int _iHeight, RGBA* pixelData)
+void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData)
 {
   png_image image; 
 
@@ -538,7 +587,7 @@ void WritePNGWithAlpha(const char *szFilename, short int _iWidth, short int _iHe
   png_image_free(&image);
 }
 
-void WritePNG16BitGrayscale(const char *szFilename, short int _iWidth, short int _iHeight, unsigned short* pixelData)
+void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, unsigned short* pixelData)
 {
   png_image image; 
 
@@ -636,11 +685,25 @@ void* processFileWorker(void* arg) {
             iElevationData = detailedData;
             fi->iWidth *= opts->scaleFactor;
             fi->iHeight *= opts->scaleFactor;
-            fi->ulFilesize = fi->iWidth * fi->iHeight * sizeof(short int);
+            
+            // Sichere Berechnung der neuen Dateigröße
+            size_t newPixels, newFilesize;
+            if (!safe_multiply_size_t(fi->iWidth, fi->iHeight, &newPixels) ||
+                !safe_multiply_size_t(newPixels, sizeof(short int), &newFilesize)) {
+                pthread_mutex_lock(data->outputMutex);
+                fprintf(stderr, "FEHLER: Dateigröße-Überlauf nach Enhancement: %zu×%zu für %s\n", 
+                        fi->iWidth, fi->iHeight, fi->szFilename);
+                pthread_mutex_unlock(data->outputMutex);
+                free(iElevationData);
+                iElevationData = NULL;
+                *(data->globalResult) = 1;
+                return NULL;
+            }
+            fi->ulFilesize = newFilesize;
             
             pthread_mutex_lock(data->outputMutex);
             if (opts->verbose) {
-                fprintf(stderr, "INFO: Enhanced resolution: %dx%d pixels for %s\n", 
+                fprintf(stderr, "INFO: Enhanced resolution: %zu×%zu pixels for %s\n", 
                         fi->iWidth, fi->iHeight, fi->szFilename);
             }
             pthread_mutex_unlock(data->outputMutex);
@@ -653,15 +716,27 @@ void* processFileWorker(void* arg) {
     }
 
     // Speicher für Pixel Data allokieren - abhängig vom Output-Format
-    unsigned long pixelCount = fi->iWidth * fi->iHeight;
+    size_t pixelCount;
+    if (!safe_multiply_size_t(fi->iWidth, fi->iHeight, &pixelCount)) {
+        pthread_mutex_lock(data->outputMutex);
+        fprintf(stderr, "Fehler: Pixelanzahl-Überlauf bei %zu×%zu für %s\n", 
+                fi->iWidth, fi->iHeight, fi->szFilename);
+        pthread_mutex_unlock(data->outputMutex);
+        free(iElevationData);
+        iElevationData = NULL;
+        *(data->globalResult) = 1;
+        return NULL;
+    }
+    
     unsigned short* PixelData16 = NULL;
     
     if (opts->output16bit) {
-        // 16-Bit Grayscale-Daten
-        if ((PixelData16 = (unsigned short*)malloc(pixelCount * sizeof(unsigned short))) == NULL) {
+        // 16-Bit Grayscale-Daten mit überlaufgeschützter Allokation
+        PixelData16 = (unsigned short*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(unsigned short));
+        if (PixelData16 == NULL) {
             pthread_mutex_lock(data->outputMutex);
-            fprintf(stderr, "Error: Can't allocate 16-bit pixel data block for %s (%lu pixels)\n", 
-                    fi->szFilename, pixelCount);
+            fprintf(stderr, "Error: Can't allocate 16-bit pixel data block for %s (%zu×%zu pixels)\n", 
+                    fi->szFilename, fi->iWidth, fi->iHeight);
             pthread_mutex_unlock(data->outputMutex);
             free(iElevationData);
             iElevationData = NULL;
@@ -669,11 +744,12 @@ void* processFileWorker(void* arg) {
             return NULL;
         }
     } else if (opts->alphaNoData) {
-        // 8-Bit RGBA-Daten für Alpha-Support
-        if ((PixelDataRGBA = (RGBA*)malloc(pixelCount * sizeof(struct tag_RGBA))) == NULL) {
+        // 8-Bit RGBA-Daten für Alpha-Support mit überlaufgeschützter Allokation
+        PixelDataRGBA = (RGBA*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(struct tag_RGBA));
+        if (PixelDataRGBA == NULL) {
             pthread_mutex_lock(data->outputMutex);
-            fprintf(stderr, "Error: Can't allocate RGBA pixel data block for %s (%lu pixels)\n", 
-                    fi->szFilename, pixelCount);
+            fprintf(stderr, "Error: Can't allocate RGBA pixel data block for %s (%zu×%zu pixels)\n", 
+                    fi->szFilename, fi->iWidth, fi->iHeight);
             pthread_mutex_unlock(data->outputMutex);
             free(iElevationData);
             iElevationData = NULL;
@@ -681,11 +757,12 @@ void* processFileWorker(void* arg) {
             return NULL;
         }
     } else {
-        // 8-Bit RGB-Daten
-        if ((PixelData = (RGB*)malloc(pixelCount * sizeof(struct tag_RGB))) == NULL) {
+        // 8-Bit RGB-Daten mit überlaufgeschützter Allokation  
+        PixelData = (RGB*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(struct tag_RGB));
+        if (PixelData == NULL) {
             pthread_mutex_lock(data->outputMutex);
-            fprintf(stderr, "Error: Can't allocate RGB pixel data block for %s (%lu pixels)\n", 
-                    fi->szFilename, pixelCount);
+            fprintf(stderr, "Error: Can't allocate RGB pixel data block for %s (%zu×%zu pixels)\n", 
+                    fi->szFilename, fi->iWidth, fi->iHeight);
             pthread_mutex_unlock(data->outputMutex);
             free(iElevationData);
             iElevationData = NULL;
@@ -1481,8 +1558,8 @@ void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag
         fprintf(metadataFile, "  \"source_file\": \"%s\",\n", fi->szFilename);
         fprintf(metadataFile, "  \"png_file\": \"%s\",\n", pngFilename);
         fprintf(metadataFile, "  \"dimensions\": {\n");
-        fprintf(metadataFile, "    \"width\": %d,\n", fi->iWidth);
-        fprintf(metadataFile, "    \"height\": %d\n", fi->iHeight);
+        fprintf(metadataFile, "    \"width\": %zu,\n", fi->iWidth);
+        fprintf(metadataFile, "    \"height\": %zu\n", fi->iHeight);
         fprintf(metadataFile, "  },\n");
         fprintf(metadataFile, "  \"elevation\": {\n");
         fprintf(metadataFile, "    \"min_meters\": %d,\n", effectiveMinHeight);
@@ -1526,8 +1603,8 @@ void writeMetadataFile(const char* pngFilename, ProgramOptions* opts, struct tag
         fprintf(metadataFile, "Source File: %s\n", fi->szFilename);
         fprintf(metadataFile, "PNG File: %s\n", pngFilename);
         fprintf(metadataFile, "\nImage Dimensions:\n");
-        fprintf(metadataFile, "  Width:  %d pixels\n", fi->iWidth);
-        fprintf(metadataFile, "  Height: %d pixels\n", fi->iHeight);
+        fprintf(metadataFile, "  Width:  %zu pixels\n", fi->iWidth);
+        fprintf(metadataFile, "  Height: %zu pixels\n", fi->iHeight);
         fprintf(metadataFile, "\nElevation Data:\n");
         fprintf(metadataFile, "  Effective Range: %d - %d meters\n", effectiveMinHeight, effectiveMaxHeight);
         fprintf(metadataFile, "  Original Range:  %d - %d meters\n", fi->iMinElevation, fi->iMaxElevation);
