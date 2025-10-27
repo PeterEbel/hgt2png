@@ -1,5 +1,0 @@
-# Unix to Windows
-awk '{ sub("$", ""); print }' unixfile.txt > windowsfile.txt
-
-# Windows to Unix
-awk '{ sub("\r$", ""); print }' windows.txt > unix.txt
