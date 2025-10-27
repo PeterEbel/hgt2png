@@ -40,6 +40,11 @@
 #define ENABLE_PROCEDURAL_DETAIL 1
 
 // Parameter-Struktur für Kommandozeilen-Optionen
+typedef enum {
+  CURVE_LINEAR = 0,
+  CURVE_LOG = 1
+} CurveType;
+
 typedef struct {
   int scaleFactor;
   float detailIntensity;
@@ -50,6 +55,10 @@ typedef struct {
   int showVersion;
   int numThreads;  // Neue Option für Thread-Anzahl
   int output16bit;  // Neue Option für 16-Bit PNG Output
+  float gamma;      // Gamma-Korrektur (Standard: 1.0)
+  CurveType curveType;  // Kurventyp (linear/log)
+  int minHeight;    // Minimale Höhe für Mapping (-1 = Auto)
+  int maxHeight;    // Maximale Höhe für Mapping (-1 = Auto)
 } ProgramOptions;
 
 // Threading-Strukturen für Parallelisierung
@@ -108,6 +117,7 @@ short int BilinearInterpolate(short int* data, int width, int height, float x, f
 float GetPixelDistance(int hgtType);
 float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType);
 float GetHeightTypeFactor(short int height);
+float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType);
 
@@ -632,6 +642,16 @@ void* processFileWorker(void* arg) {
             return NULL;
         }
     }
+    
+    // Effektive Min/Max-Höhen berechnen (Custom Range oder Auto-Detection)
+    int effectiveMinHeight = (opts->minHeight != -1) ? opts->minHeight : iOverallMinElevation;
+    int effectiveMaxHeight = (opts->maxHeight != -1) ? opts->maxHeight : iOverallMaxElevation;
+    
+    // Sicherheitscheck: Min < Max
+    if (effectiveMinHeight >= effectiveMaxHeight) {
+        effectiveMinHeight = iOverallMinElevation;
+        effectiveMaxHeight = iOverallMaxElevation;
+    }
      
     // Elevation zu Pixel konvertieren - abhängig vom Output-Format
     for (unsigned long m = 0; m < pixelCount; m++) {
@@ -642,22 +662,28 @@ void* processFileWorker(void* arg) {
             fi->noDataCount += threadNoDataCount;  // Thread-safe da sequentiell
         }
 
+        // Normalisierung auf 0.0-1.0 mit Custom-Range
+        float normalizedValue = 0.5f;  // Fallback
+        if (effectiveMaxHeight > effectiveMinHeight) {
+            // Clamp elevation zu effektivem Range
+            int clampedElevation = iElevationData[m];
+            if (clampedElevation < effectiveMinHeight) clampedElevation = effectiveMinHeight;
+            if (clampedElevation > effectiveMaxHeight) clampedElevation = effectiveMaxHeight;
+            
+            normalizedValue = (float)(clampedElevation - effectiveMinHeight) / 
+                             (float)(effectiveMaxHeight - effectiveMinHeight);
+        }
+        
+        // Kurven-Mapping anwenden
+        float curvedValue = ApplyCurveMapping(normalizedValue, opts->curveType, opts->gamma);
+        
         if (opts->output16bit) {
             // 16-Bit Grayscale: Volle 16-Bit-Range nutzen (0-65535)
-            if (iOverallMaxElevation > 0) {
-                PixelData16[m] = (unsigned short)((unsigned long)iElevationData[m] * 65535UL / iOverallMaxElevation);
-            } else {
-                // Fallback für flache Terrain oder nur NoData-Werte
-                PixelData16[m] = 32768;  // Mitte der 16-Bit-Range
-            }
+            PixelData16[m] = (unsigned short)(curvedValue * 65535.0f);
         } else {
-            // 8-Bit RGB: Klassische RGB-Berechnung
-            if (iOverallMaxElevation > 0) {
-                PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
-            } else {
-                // Fallback für flache Terrain oder nur NoData-Werte
-                PixelData[m].r = PixelData[m].g = PixelData[m].b = 128;  // Mittelgrau
-            }
+            // 8-Bit RGB: Kurven-korrigierte Berechnung
+            unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
+            PixelData[m].r = PixelData[m].g = PixelData[m].b = pixelValue;
         }
     }
 
@@ -904,6 +930,42 @@ float GetHeightTypeFactor(short int height) {
     else return 0.3f;                    // Extreme Höhen - minimales Detail
 }
 
+// Kurven-Mapping für verschiedene Elevation-zu-Pixel-Transformationen
+float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma) {
+    // Eingabe-Clipping
+    if (normalizedValue < 0.0f) normalizedValue = 0.0f;
+    if (normalizedValue > 1.0f) normalizedValue = 1.0f;
+    
+    float result = normalizedValue;
+    
+    switch (curveType) {
+        case CURVE_LINEAR:
+            // Lineare Kurve - keine Änderung
+            result = normalizedValue;
+            break;
+            
+        case CURVE_LOG:
+            // Logarithmische Kurve - betont niedrige Werte
+            if (normalizedValue > 0.0f) {
+                result = logf(1.0f + normalizedValue * 9.0f) / logf(10.0f);  // log10(1 + x*9)
+            } else {
+                result = 0.0f;
+            }
+            break;
+    }
+    
+    // Gamma-Korrektur anwenden
+    if (gamma != 1.0f) {
+        result = powf(result, 1.0f / gamma);
+    }
+    
+    // Ausgabe-Clipping
+    if (result < 0.0f) result = 0.0f;
+    if (result > 1.0f) result = 1.0f;
+    
+    return result;
+}
+
 // Hauptfunktion für Procedural Detail Generation
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType) {
@@ -1066,6 +1128,10 @@ void initDefaultOptions(ProgramOptions *opts) {
     opts->showVersion = 0;
     opts->numThreads = DEFAULT_NUM_THREADS;  // Neue Option für Thread-Anzahl
     opts->output16bit = 0;  // Standard: 8-Bit RGB Output
+    opts->gamma = 1.0f;     // Standard: Keine Gamma-Korrektur
+    opts->curveType = CURVE_LINEAR;  // Standard: Lineare Kurve
+    opts->minHeight = -1;   // Auto-Erkennung
+    opts->maxHeight = -1;   // Auto-Erkennung
 }
 
 // Zeige Hilfe-Text
@@ -1085,6 +1151,10 @@ void showHelp(const char *programName) {
     printf("  -d, --disable-detail     Disable procedural detail generation\n");
     printf("  -q, --quiet              Suppress verbose output\n");
     printf("      --16bit              Generate 16-bit grayscale PNG (better for displacement maps)\n");
+    printf("  -g, --gamma <f>          Gamma correction curve (default: 1.0, range: 0.1-10.0)\n");
+    printf("  -c, --curve <type>       Mapping curve: linear|log (default: linear)\n");
+    printf("  -m, --min-height <n>     Minimum elevation for mapping (default: auto)\n");
+    printf("  -M, --max-height <n>     Maximum elevation for mapping (default: auto)\n");
     printf("  -h, --help               Show this help message\n");
     printf("  -v, --version            Show version information\n\n");
     
@@ -1122,12 +1192,16 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {"disable-detail",   no_argument,       0, 'd'},
         {"quiet",            no_argument,       0, 'q'},
         {"16bit",            no_argument,       0, '6'},
+        {"gamma",            required_argument, 0, 'g'},
+        {"curve",            required_argument, 0, 'c'},
+        {"min-height",       required_argument, 0, 'm'},
+        {"max-height",       required_argument, 0, 'M'},
         {"help",             no_argument,       0, 'h'},
         {"version",          no_argument,       0, 'v'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6hv", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6g:c:m:M:hv", long_options, NULL)) != -1) {
         switch (c) {
             case 's':
                 opts->scaleFactor = atoi(optarg);
@@ -1167,6 +1241,37 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
                 
             case '6':
                 opts->output16bit = 1;
+                break;
+                
+            case 'g':
+                opts->gamma = atof(optarg);
+                if (opts->gamma <= 0.1f || opts->gamma > 10.0f) {
+                    fprintf(stderr, "Error: Gamma must be between 0.1 and 10.0\n");
+                    return 1;
+                }
+                break;
+                
+            case 'c':
+                if (strcmp(optarg, "linear") == 0) {
+                    opts->curveType = CURVE_LINEAR;
+                } else if (strcmp(optarg, "log") == 0) {
+                    opts->curveType = CURVE_LOG;
+                } else {
+                    fprintf(stderr, "Error: Curve type must be 'linear' or 'log'\n");
+                    return 1;
+                }
+                break;
+                
+            case 'm':
+                opts->minHeight = atoi(optarg);
+                break;
+                
+            case 'M':
+                opts->maxHeight = atoi(optarg);
+                if (opts->minHeight != -1 && opts->maxHeight != -1 && opts->maxHeight <= opts->minHeight) {
+                    fprintf(stderr, "Error: max-height must be greater than min-height\n");
+                    return 1;
+                }
                 break;
                 
             case 'h':
