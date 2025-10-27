@@ -17,13 +17,14 @@
 
 #include <stddef.h>
 #include <stdlib.h>
-#include <stdint.h>  // Für SIZE_MAX
+#include <stdint.h>  // Für SIZE_MAX und explizite Integertypen
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <math.h>
 #include <getopt.h>
+#include <arpa/inet.h>  // Für ntohs/htons (network byte order)
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -104,9 +105,9 @@ typedef struct tag_FileInfoHGT {
   char szFilename[_MAX_PATH];
   size_t iWidth;
   size_t iHeight;
-  short int iMinElevation;
-  short int iMaxElevation;
-  size_t ulFilesize;  // Auch diese sollte size_t sein
+  int16_t iMinElevation;    // Explizit signed 16-bit für Höhenwerte
+  int16_t iMaxElevation;    // Explizit signed 16-bit für Höhenwerte
+  size_t ulFilesize;
   int hgtType;              // Pro-Datei HGT-Typ statt globaler Variable
   int noDataCount;          // Anzahl NoData-Pixel für Statistik
 } FileInfo, *pFileInfo;
@@ -117,7 +118,7 @@ RGB *PixelData;
 void WritePNG(const char *, size_t, size_t);
 void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData);
 void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData);
-void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, unsigned short* pixelData);
+void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData);
 
 // Parameter-Management Funktionen
 void initDefaultOptions(ProgramOptions *opts);
@@ -191,26 +192,25 @@ int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, P
 void generateOutputFilename(const char* inputPath, char* outputPath);
 
 // NoData-Behandlung
-int isNoDataValue(short int value, int hgtType);
-short int processElevationValue(short int rawValue, int hgtType, int* noDataCount);
+int isNoDataValue(int16_t value, int hgtType);
+int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount);
 
 const int HGT_TYPE_30 = 1201;
 const int HGT_TYPE_90 = 3601;
 const int HGT_TYPE_UNKNOWN = -1;
-const unsigned long HGT_TYPE_30_SIZE = 1201 * 1201 * sizeof(short int);
-const unsigned long HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(short int);
+const size_t HGT_TYPE_30_SIZE = 1201 * 1201 * sizeof(int16_t);
+const size_t HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(int16_t);
 
-// NoData Konstanten (SRTM Standard)
-const short int NODATA_VALUE_BE = (short int)0x8000;  // Big Endian: -32768
-const short int NODATA_VALUE_LE = (short int)0x0080;  // Little Endian: 128 (nach Byte-Swap)
-const short int NODATA_REPLACEMENT = 0;               // Ersatzwert für NoData
+// NoData Konstanten (SRTM Standard) - Big Endian Format
+const int16_t NODATA_VALUE_BE = (int16_t)0x8000;  // Big Endian: -32768
+const int16_t NODATA_REPLACEMENT = 0;             // Ersatzwert für NoData
 
 char OutputHeightmapFile[_MAX_PATH];
 
-short int iOverallMinElevation;
-short int iOverallMaxElevation;
-short int iCurrentMinElevation;
-short int iCurrentMaxElevation;
+int16_t iOverallMinElevation;
+int16_t iOverallMaxElevation;
+int16_t iCurrentMinElevation;
+int16_t iCurrentMaxElevation;
 
 int main(int argc, char *argv[])
 {
@@ -1261,46 +1261,38 @@ void generateOutputFilename(const char* inputPath, char* outputPath) {
 
 // NODATA-BEHANDLUNG
 
-// Prüft ob ein Rohwert ein NoData-Wert ist (vor oder nach Byte-Swap)
-int isNoDataValue(short int value, int hgtType) {
+// Prüft ob ein Rohwert ein NoData-Wert ist (nach Endian-Konvertierung)
+int isNoDataValue(int16_t value, int hgtType) {
     // Nur für SRTM-Daten (30m/90m) NoData-Erkennung
     if (hgtType != HGT_TYPE_30 && hgtType != HGT_TYPE_90) {
         return 0;
     }
     
-    // NoData-Wert in beiden Byte-Orders erkennen
-    return (value == NODATA_VALUE_BE || value == NODATA_VALUE_LE);
+    // NoData-Wert: -32768 (0x8000 in Big Endian)
+    return (value == NODATA_VALUE_BE);
 }
 
-// Verarbeitet einen Höhenwert: Byte-Swap + NoData-Behandlung + Clamping
-short int processElevationValue(short int rawValue, int hgtType, int* noDataCount) {
-    // 1. NoData-Erkennung VOR Byte-Swap (kritisch!)
-    if (isNoDataValue(rawValue, hgtType)) {
+// Verarbeitet einen Höhenwert: Network-to-Host Byte Order + NoData-Behandlung + Clamping
+int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount) {
+    // 1. Endian-Konvertierung für SRTM-Daten (Big Endian -> Host Endian)
+    int16_t hostValue = rawValue;
+    if (hgtType == HGT_TYPE_30 || hgtType == HGT_TYPE_90) {
+        hostValue = (int16_t)ntohs((uint16_t)rawValue);  // Network (Big Endian) to Host
+    }
+    
+    // 2. NoData-Erkennung nach Endian-Konvertierung
+    if (isNoDataValue(hostValue, hgtType)) {
         if (noDataCount != NULL) {
             (*noDataCount)++;
         }
         return NODATA_REPLACEMENT;  // Ersatzwert für NoData
     }
     
-    // 2. Byte-Swapping für SRTM-Daten
-    short int swappedValue = rawValue;
-    if (hgtType == HGT_TYPE_30 || hgtType == HGT_TYPE_90) {
-        swappedValue = (short)(((rawValue & 0xff) << 8) | ((rawValue & 0xff00) >> 8));
-    }
+    // 3. Clamping auf gültige Höhenwerte
+    if (hostValue < 0) hostValue = 0;
+    if (hostValue > _MAX_HEIGHT) hostValue = _MAX_HEIGHT;
     
-    // 3. Nochmalige NoData-Prüfung nach Byte-Swap (Sicherheit)
-    if (isNoDataValue(swappedValue, hgtType)) {
-        if (noDataCount != NULL) {
-            (*noDataCount)++;
-        }
-        return NODATA_REPLACEMENT;
-    }
-    
-    // 4. Clamping auf gültige Höhenwerte
-    if (swappedValue < 0) swappedValue = 0;
-    if (swappedValue > _MAX_HEIGHT) swappedValue = _MAX_HEIGHT;
-    
-    return swappedValue;
+    return hostValue;
 }
 
 // PARAMETER-MANAGEMENT FUNKTIONEN
