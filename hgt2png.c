@@ -49,6 +49,7 @@ typedef struct {
   int showHelp;
   int showVersion;
   int numThreads;  // Neue Option für Thread-Anzahl
+  int output16bit;  // Neue Option für 16-Bit PNG Output
 } ProgramOptions;
 
 // Threading-Strukturen für Parallelisierung
@@ -92,6 +93,7 @@ RGB *PixelData;
 
 void WritePNG(const char *, short int, short int);
 void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHeight, RGB* pixelData);
+void WritePNG16BitGrayscale(const char *szFilename, short int _iWidth, short int _iHeight, unsigned short* pixelData);
 
 // Parameter-Management Funktionen
 void initDefaultOptions(ProgramOptions *opts);
@@ -488,6 +490,26 @@ void WritePNGWithData(const char *szFilename, short int _iWidth, short int _iHei
   png_image_free(&image);
 }
 
+void WritePNG16BitGrayscale(const char *szFilename, short int _iWidth, short int _iHeight, unsigned short* pixelData)
+{
+  png_image image; 
+
+  memset(&image, 0, sizeof image);
+
+  image.version = PNG_IMAGE_VERSION;
+  image.format = PNG_FORMAT_LINEAR_Y;  // 16-bit Grayscale  
+  image.width = _iWidth;
+  image.height = _iHeight;
+
+  fprintf(stderr, "Info: Writing 16-bit %s\n", szFilename);
+  if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) pixelData, 0/*row_stride*/, NULL/*colormap*/))
+  {
+    fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+  }
+
+  png_image_free(&image);
+}
+
 // PARALLELISIERUNG - Worker-Thread Funktion
 void* processFileWorker(void* arg) {
     ThreadData* data = (ThreadData*)arg;
@@ -581,20 +603,37 @@ void* processFileWorker(void* arg) {
         }
     }
 
-    // Speicher für Pixel Data allokieren (korrekte Größe: width*height statt ulFilesize)
+    // Speicher für Pixel Data allokieren - abhängig vom Output-Format
     unsigned long pixelCount = fi->iWidth * fi->iHeight;
-    if ((PixelData = (RGB*)malloc(pixelCount * sizeof(struct tag_RGB))) == NULL) {
-        pthread_mutex_lock(data->outputMutex);
-        fprintf(stderr, "Error: Can't allocate pixel data block for %s (%lu pixels)\n", 
-                fi->szFilename, pixelCount);
-        pthread_mutex_unlock(data->outputMutex);
-        free(iElevationData);
-        iElevationData = NULL;
-        *(data->globalResult) = 1;
-        return NULL;
+    unsigned short* PixelData16 = NULL;
+    
+    if (opts->output16bit) {
+        // 16-Bit Grayscale-Daten
+        if ((PixelData16 = (unsigned short*)malloc(pixelCount * sizeof(unsigned short))) == NULL) {
+            pthread_mutex_lock(data->outputMutex);
+            fprintf(stderr, "Error: Can't allocate 16-bit pixel data block for %s (%lu pixels)\n", 
+                    fi->szFilename, pixelCount);
+            pthread_mutex_unlock(data->outputMutex);
+            free(iElevationData);
+            iElevationData = NULL;
+            *(data->globalResult) = 1;
+            return NULL;
+        }
+    } else {
+        // 8-Bit RGB-Daten
+        if ((PixelData = (RGB*)malloc(pixelCount * sizeof(struct tag_RGB))) == NULL) {
+            pthread_mutex_lock(data->outputMutex);
+            fprintf(stderr, "Error: Can't allocate RGB pixel data block for %s (%lu pixels)\n", 
+                    fi->szFilename, pixelCount);
+            pthread_mutex_unlock(data->outputMutex);
+            free(iElevationData);
+            iElevationData = NULL;
+            *(data->globalResult) = 1;
+            return NULL;
+        }
     }
      
-    // Elevation zu RGB konvertieren (korrekte Pixel-Anzahl verwenden)
+    // Elevation zu Pixel konvertieren - abhängig vom Output-Format
     for (unsigned long m = 0; m < pixelCount; m++) {
         if (!opts->enableDetail) {
             // Korrekte NoData-Behandlung ohne Detail-Generation
@@ -603,12 +642,22 @@ void* processFileWorker(void* arg) {
             fi->noDataCount += threadNoDataCount;  // Thread-safe da sequentiell
         }
 
-        // Sichere RGB-Berechnung - Division durch 0 vermeiden
-        if (iOverallMaxElevation > 0) {
-            PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
+        if (opts->output16bit) {
+            // 16-Bit Grayscale: Volle 16-Bit-Range nutzen (0-65535)
+            if (iOverallMaxElevation > 0) {
+                PixelData16[m] = (unsigned short)((unsigned long)iElevationData[m] * 65535UL / iOverallMaxElevation);
+            } else {
+                // Fallback für flache Terrain oder nur NoData-Werte
+                PixelData16[m] = 32768;  // Mitte der 16-Bit-Range
+            }
         } else {
-            // Fallback für flache Terrain oder nur NoData-Werte
-            PixelData[m].r = PixelData[m].g = PixelData[m].b = 128;  // Mittelgrau
+            // 8-Bit RGB: Klassische RGB-Berechnung
+            if (iOverallMaxElevation > 0) {
+                PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
+            } else {
+                // Fallback für flache Terrain oder nur NoData-Werte
+                PixelData[m].r = PixelData[m].g = PixelData[m].b = 128;  // Mittelgrau
+            }
         }
     }
 
@@ -617,14 +666,23 @@ void* processFileWorker(void* arg) {
     
     // PNG schreiben (thread-safe mit lokalen PixelData)
     pthread_mutex_lock(data->outputMutex);
-    WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
+    if (opts->output16bit) {
+        WritePNG16BitGrayscale(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16);
+    } else {
+        WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
+    }
     pthread_mutex_unlock(data->outputMutex);
 
     // Cleanup für diesen Thread
     free(iElevationData);
     iElevationData = NULL;
-    free(PixelData);  // Thread-lokale PixelData freigeben
-    PixelData = NULL;
+    if (opts->output16bit) {
+        free(PixelData16);
+        PixelData16 = NULL;
+    } else {
+        free(PixelData);  // Thread-lokale PixelData freigeben
+        PixelData = NULL;
+    }
     
     // Fortschrittszähler aktualisieren
     pthread_mutex_lock(data->outputMutex);
@@ -1007,6 +1065,7 @@ void initDefaultOptions(ProgramOptions *opts) {
     opts->showHelp = 0;
     opts->showVersion = 0;
     opts->numThreads = DEFAULT_NUM_THREADS;  // Neue Option für Thread-Anzahl
+    opts->output16bit = 0;  // Standard: 8-Bit RGB Output
 }
 
 // Zeige Hilfe-Text
@@ -1025,6 +1084,7 @@ void showHelp(const char *programName) {
     printf("                           1=sequential, 2-16=parallel processing\n");
     printf("  -d, --disable-detail     Disable procedural detail generation\n");
     printf("  -q, --quiet              Suppress verbose output\n");
+    printf("      --16bit              Generate 16-bit grayscale PNG (better for displacement maps)\n");
     printf("  -h, --help               Show this help message\n");
     printf("  -v, --version            Show version information\n\n");
     
@@ -1061,12 +1121,13 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
         {"threads",          required_argument, 0, 't'},
         {"disable-detail",   no_argument,       0, 'd'},
         {"quiet",            no_argument,       0, 'q'},
+        {"16bit",            no_argument,       0, '6'},
         {"help",             no_argument,       0, 'h'},
         {"version",          no_argument,       0, 'v'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "s:i:r:t:dqhv", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:i:r:t:dq6hv", long_options, NULL)) != -1) {
         switch (c) {
             case 's':
                 opts->scaleFactor = atoi(optarg);
@@ -1102,6 +1163,10 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
                 
             case 'q':
                 opts->verbose = 0;
+                break;
+                
+            case '6':
+                opts->output16bit = 1;
                 break;
                 
             case 'h':
