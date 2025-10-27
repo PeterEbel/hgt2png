@@ -335,10 +335,13 @@ int main(int argc, char *argv[])
     if (iCurrentMinElevation < iOverallMinElevation) iOverallMinElevation = iCurrentMinElevation;
     if (iCurrentMaxElevation > iOverallMaxElevation) iOverallMaxElevation = iCurrentMaxElevation;
     
-    // NoData-Statistik ausgeben
+    // NoData-Statistik ausgeben - Division durch 0 vermeiden
     if (fi[i].noDataCount > 0) {
         unsigned long totalPixels = fi[i].ulFilesize / 2;
-        float noDataPercent = (float)fi[i].noDataCount / totalPixels * 100.0f;
+        float noDataPercent = 0.0f;
+        if (totalPixels > 0) {
+            noDataPercent = (float)fi[i].noDataCount / totalPixels * 100.0f;
+        }
         fprintf(stderr, "- MIN=%4d MAX=%4d, NoData=%d (%.1f%%)\n", 
                 iCurrentMinElevation, iCurrentMaxElevation, fi[i].noDataCount, noDataPercent);
     } else {
@@ -515,8 +518,12 @@ void* processFileWorker(void* arg) {
             fi->noDataCount += threadNoDataCount;  // Thread-safe da sequentiell
         }
 
-        if (iOverallMaxElevation != 0) {
+        // Sichere RGB-Berechnung - Division durch 0 vermeiden
+        if (iOverallMaxElevation > 0) {
             PixelData[m].r = PixelData[m].g = PixelData[m].b = iElevationData[m] * 255 / iOverallMaxElevation;
+        } else {
+            // Fallback für flache Terrain oder nur NoData-Werte
+            PixelData[m].r = PixelData[m].g = PixelData[m].b = 128;  // Mittelgrau
         }
     }
 
@@ -793,9 +800,26 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
             detailedData[y * newWidth + x] = finalHeight;
         }
         
-        // Fortschrittsanzeige
-        if (y % (newHeight / 10) == 0) {
-            fprintf(stderr, "INFO: Progress: %d%%\n", (y * 100) / newHeight);
+        // Intelligente Fortschrittsanzeige - Division durch 0 vermeiden
+        static int lastProgress = -1;  // Verhindert doppelte Ausgaben
+        int currentProgress = (y * 100) / newHeight;
+        
+        // Progress-Intervall abhängig von Bildgröße
+        int progressInterval;
+        if (newHeight >= 10000) {
+            progressInterval = 10;  // Alle 10% bei großen Bildern
+        } else if (newHeight >= 1000) {
+            progressInterval = 20;  // Alle 20% bei mittleren Bildern  
+        } else if (newHeight >= 100) {
+            progressInterval = 50;  // Alle 50% bei kleinen Bildern
+        } else {
+            progressInterval = 100; // Nur am Ende bei sehr kleinen Bildern
+        }
+        
+        // Ausgabe nur bei Intervall-Änderung
+        if (currentProgress >= lastProgress + progressInterval || currentProgress == 100) {
+            fprintf(stderr, "INFO: Progress: %d%%\n", currentProgress);
+            lastProgress = currentProgress;
         }
     }
     
