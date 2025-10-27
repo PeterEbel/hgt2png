@@ -4,7 +4,7 @@
  *** Creation Date:      2016-01-01
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
- *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 $(pkg-config --cflags --libs libpng) -lm -pthread
+ *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 $(pkg-config --cflags --libs libpng) -lm -pthread -fopenmp -mavx2 -O3
  *** Dependencies:       libpng-dev: sudo apt-get install libpng-dev pkg-config
  *** Modification Log:  
  *** Version Date        Modified By   Modification Details
@@ -15,6 +15,7 @@
  **********************************************************************************
 */
 
+#define _POSIX_C_SOURCE 200112L  // Für aligned_alloc
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdint.h>  // Für SIZE_MAX und explizite Integertypen
@@ -24,6 +25,9 @@
 #include <unistd.h>
 #include <math.h>
 #include <getopt.h>
+#ifdef _OPENMP
+#include <omp.h>     // OpenMP für SIMD-Vektorisierung und Parallelisierung
+#endif
 #include <arpa/inet.h>  // Für ntohs/htons (network byte order)
 
 #include <sys/types.h>
@@ -166,7 +170,21 @@ static void* safe_malloc_pixels(size_t width, size_t height, size_t element_size
         return NULL;
     }
     
+    // Optimiertes Memory-Alignment für SIMD-Vektorisierung
+    // 32-Byte-Alignment für AVX2 (8 float-Werte parallel)
+    #ifdef _OPENMP
+    const size_t alignment = 32;  // AVX2-optimiert
+    size_t aligned_bytes = (total_bytes + alignment - 1) & ~(alignment - 1);
+    
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, alignment, aligned_bytes) != 0) {
+        // Fallback auf normales malloc wenn posix_memalign fehlschlägt
+        ptr = malloc(total_bytes);
+    }
+    #else
     void* ptr = malloc(total_bytes);
+    #endif
+    
     if (!ptr) {
         fprintf(stderr, "Fehler: malloc fehlgeschlagen für %zu Bytes (%zu×%zu×%zu)\n", 
                 total_bytes, width, height, element_size);
@@ -822,12 +840,15 @@ static void* processFileWorker(void* arg) {
     }
      
     // Elevation zu Pixel konvertieren - abhängig vom Output-Format
+    // OpenMP: SIMD-Vektorisierung für optimale Performance bei großen Bildern
+    int totalNoDataCount = 0;  // Thread-safe aggregation für NoData-Zählung
+    #pragma omp parallel for simd aligned(iElevationData:32) reduction(+:totalNoDataCount) if(pixelCount > 10000)
     for (unsigned long m = 0; m < pixelCount; m++) {
         if (!opts->enableDetail) {
             // Korrekte NoData-Behandlung ohne Detail-Generation
             int threadNoDataCount = 0;
             iElevationData[m] = processElevationValue(iElevationData[m], fi->hgtType, &threadNoDataCount);
-            fi->noDataCount += threadNoDataCount;  // Thread-safe da sequentiell
+            totalNoDataCount += threadNoDataCount;  // Thread-safe Reduction
         }
 
         // Prüfe auf NoData-Pixel (für Alpha-Transparenz)
@@ -869,6 +890,9 @@ static void* processFileWorker(void* arg) {
             PixelData[m].r = PixelData[m].g = PixelData[m].b = pixelValue;
         }
     }
+    
+    // NoData-Zählung nach paralleler Verarbeitung aktualisieren
+    fi->noDataCount += totalNoDataCount;
 
     // PNG Output-Dateiname generieren (nur Dateiname, nicht kompletter Pfad)
     generateOutputFilename(fi->szFilename, OutputHeightmapFile);
@@ -1220,7 +1244,20 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
     fprintf(stderr, "INFO: Generating %zu×%zu detailed heightmap (intensity: %.1f)\n", 
             newWidth, newHeight, detailIntensity);
     
+    // OpenMP: Parallele Verarbeitung + SIMD-Vektorisierung für optimale Performance
+    // Äußere Schleife parallel auf mehrere CPU-Kerne verteilen
+    #pragma omp parallel for schedule(dynamic, 64) if(newHeight > 1000)
     for (size_t y = 0; y < newHeight; y++) {
+        // Progress-Reporting (thread-safe, reduzierte Frequenz)
+        if (y % (newHeight / 10) == 0) {
+            #pragma omp critical
+            {
+                fprintf(stderr, "INFO: Progress: %zu%%\n", (y * 100) / newHeight);
+            }
+        }
+        
+        // Innere Schleife für SIMD-Vektorisierung optimieren
+        #pragma omp simd aligned(detailedData:32) safelen(16)
         for (size_t x = 0; x < newWidth; x++) {
             // Basis-Höhe durch bilineare Interpolation
             float srcX = (float)x / scaleFactor;
@@ -1256,28 +1293,6 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
             if (finalHeight > _MAX_HEIGHT) finalHeight = _MAX_HEIGHT;
             
             detailedData[y * newWidth + x] = finalHeight;
-        }
-        
-        // Intelligente Fortschrittsanzeige - Division durch 0 vermeiden
-        static int lastProgress = -1;  // Verhindert doppelte Ausgaben
-        int currentProgress = (int)((y * 100) / newHeight);  // size_t zu int cast für Progress
-        
-        // Progress-Intervall abhängig von Bildgröße
-        int progressInterval;
-        if (newHeight >= 10000) {
-            progressInterval = 10;  // Alle 10% bei großen Bildern
-        } else if (newHeight >= 1000) {
-            progressInterval = 20;  // Alle 20% bei mittleren Bildern  
-        } else if (newHeight >= 100) {
-            progressInterval = 50;  // Alle 50% bei kleinen Bildern
-        } else {
-            progressInterval = 100; // Nur am Ende bei sehr kleinen Bildern
-        }
-        
-        // Ausgabe nur bei Intervall-Änderung
-        if (currentProgress >= lastProgress + progressInterval || currentProgress == 100) {
-            fprintf(stderr, "INFO: Progress: %d%%\n", currentProgress);
-            lastProgress = currentProgress;
         }
     }
     
