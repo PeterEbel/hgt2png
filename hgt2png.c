@@ -103,10 +103,11 @@ int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFil
 float SimpleNoise(int x, int y, int seed);
 float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
 short int BilinearInterpolate(short int* data, int width, int height, float x, float y);
-float CalculateLocalSlope(short int* data, int width, int height, float x, float y);
+float GetPixelDistance(int hgtType);
+float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType);
 float GetHeightTypeFactor(short int height);
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
-                               int scaleFactor, float detailIntensity, int seed);
+                               int scaleFactor, float detailIntensity, int seed, int hgtType);
 
 // Neue Funktionen für Parallelisierung
 void* processFileWorker(void* arg);
@@ -557,7 +558,7 @@ void* processFileWorker(void* arg) {
         
         // Procedural Detail hinzufügen
         short int* detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight, 
-                                                     opts->scaleFactor, opts->detailIntensity, opts->noiseSeed);
+                                                     opts->scaleFactor, opts->detailIntensity, opts->noiseSeed, fi->hgtType);
         
         if (detailedData) {
             free(iElevationData);
@@ -804,7 +805,19 @@ short int BilinearInterpolate(short int* data, int width, int height, float x, f
 }
 
 // Lokale Steigung berechnen
-float CalculateLocalSlope(short int* data, int width, int height, float x, float y) {
+// Pixelabstand basierend auf HGT-Typ berechnen
+float GetPixelDistance(int hgtType) {
+    if (hgtType == HGT_TYPE_30) {
+        return 60.0f; // 2 * 30m für SRTM-1 (1201x1201)
+    } else if (hgtType == HGT_TYPE_90) {
+        return 180.0f; // 2 * 90m für SRTM-3 (3601x3601)  
+    } else {
+        // Custom-Size: Annahme mittlere Auflösung
+        return 60.0f; // Fallback auf SRTM-1 Auflösung
+    }
+}
+
+float CalculateLocalSlope(short int* data, int width, int height, float x, float y, int hgtType) {
     int ix = (int)x;
     int iy = (int)y;
     
@@ -815,8 +828,9 @@ float CalculateLocalSlope(short int* data, int width, int height, float x, float
     short int top = data[(iy-1) * width + ix];
     short int bottom = data[(iy+1) * width + ix];
     
-    float dx = (right - left) / 60.0f; // 60m = 2 * 30m SRTM-1 Auflösung
-    float dy = (bottom - top) / 60.0f;
+    float pixelDistance = GetPixelDistance(hgtType);
+    float dx = (right - left) / pixelDistance;
+    float dy = (bottom - top) / pixelDistance;
     
     float slope = sqrt(dx*dx + dy*dy) / 100.0f; // Normalisiert auf 0-1
     if (slope > 1.0f) slope = 1.0f;
@@ -834,7 +848,7 @@ float GetHeightTypeFactor(short int height) {
 
 // Hauptfunktion für Procedural Detail Generation
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
-                               int scaleFactor, float detailIntensity, int seed) {
+                               int scaleFactor, float detailIntensity, int seed, int hgtType) {
     
     int newWidth = originalWidth * scaleFactor;
     int newHeight = originalHeight * scaleFactor;
@@ -868,7 +882,7 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
             float combinedNoise = detailNoise1 * 0.5f + detailNoise2 * 0.3f + detailNoise3 * 0.2f;
             
             // Höhenabhängige Variation (flache Bereiche = weniger Detail, steile = mehr Detail)
-            float localSlope = CalculateLocalSlope(originalData, originalWidth, originalHeight, srcX, srcY);
+            float localSlope = CalculateLocalSlope(originalData, originalWidth, originalHeight, srcX, srcY, hgtType);
             float slopeMultiplier = 0.3f + (localSlope * 0.7f); // 0.3 bis 1.0
             
             // Detail basierend auf Terrain-Typ anpassen
