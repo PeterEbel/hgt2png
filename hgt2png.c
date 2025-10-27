@@ -304,15 +304,45 @@ int main(int argc, char *argv[])
     }
     else
     {
-      memcpy(sTmp, &sCurrentFilename[i][5], 4);
-      sTmp[4] = '\0';
-      fi[i].iWidth = atoi(sTmp);
-      memcpy(sTmp, &sCurrentFilename[i][10], 4);
-      sTmp[4] = '\0';
-      fi[i].iHeight = atoi(sTmp);
-      fi[i].hgtType = fi[i].iWidth * fi[i].iHeight;  // Pro-Datei statt global
-      free(sCurrentFilename[i]);
-      sCurrentFilename[i] = NULL;
+      // Custom-Size-Parsing über Dateiname mit Fallback
+      fi[i].iWidth = 0;
+      fi[i].iHeight = 0;
+      
+      // Sicheres Parsing nur bei ausreichend langer Dateiname
+      size_t nameLen = strlen(fi[i].szFilename);
+      if (nameLen >= 15) {  // Mindestens "N00E000_1234x5678.hgt"
+        memcpy(sTmp, &sCurrentFilename[i][5], 4);
+        sTmp[4] = '\0';
+        int parsedWidth = atoi(sTmp);
+        
+        memcpy(sTmp, &sCurrentFilename[i][10], 4);
+        sTmp[4] = '\0';
+        int parsedHeight = atoi(sTmp);
+        
+        // Plausibilitätsprüfung: Dimensionen müssen sinnvoll sein
+        if (parsedWidth > 0 && parsedWidth <= 65536 && 
+            parsedHeight > 0 && parsedHeight <= 65536) {
+          fi[i].iWidth = parsedWidth;
+          fi[i].iHeight = parsedHeight;
+          fi[i].hgtType = fi[i].iWidth * fi[i].iHeight;
+        }
+      }
+      
+      // Fallback: Bei ungültigem Parsing als UNKNOWN markieren
+      if (fi[i].iWidth == 0 || fi[i].iHeight == 0) {
+        fi[i].hgtType = HGT_TYPE_UNKNOWN;
+        if (opts.verbose) {
+          fprintf(stderr, "WARNING: Could not parse dimensions from filename %s\n", fi[i].szFilename);
+        }
+      } else {
+        // Zusätzliche Validation: Dateigröße muss mit Dimensionen übereinstimmen
+        unsigned long expectedSize = (unsigned long)fi[i].iWidth * fi[i].iHeight * 2; // 2 bytes per pixel
+        if (fi[i].ulFilesize != expectedSize) {
+          fprintf(stderr, "ERROR: Filesize mismatch for %s: expected %lu bytes (%dx%d), got %lu bytes\n", 
+                  fi[i].szFilename, expectedSize, fi[i].iWidth, fi[i].iHeight, fi[i].ulFilesize);
+          fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Als ungültig markieren
+        }
+      }
     }
 
     if (fi[i].hgtType == HGT_TYPE_UNKNOWN) {  // Pro-Datei Überprüfung
