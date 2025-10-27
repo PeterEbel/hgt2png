@@ -101,6 +101,11 @@ typedef struct tag_RGBA {
   unsigned char a;
 } RGBA, *pRGBA;
 
+typedef struct tag_RGBA16 {
+  uint16_t y;  // 16-bit Grayscale/Luminance
+  uint16_t a;  // 16-bit Alpha
+} RGBA16, *pRGBA16;
+
 typedef struct tag_FileInfoHGT {
   char szFilename[_MAX_PATH];
   size_t iWidth;
@@ -119,6 +124,7 @@ void WritePNG(const char *, size_t, size_t);
 static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, RGB* pixelData);
 static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA* pixelData);
 static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, uint16_t* pixelData);
+static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA16* pixelData);
 
 // Parameter-Management Funktionen
 static void initDefaultOptions(ProgramOptions *opts);
@@ -607,6 +613,26 @@ static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_
   png_image_free(&image);
 }
 
+static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, RGBA16* pixelData)
+{
+  png_image image; 
+
+  memset(&image, 0, sizeof image);
+
+  image.version = PNG_IMAGE_VERSION;
+  image.format = PNG_FORMAT_LINEAR_Y_ALPHA;  // 16-bit Grayscale + Alpha  
+  image.width = _iWidth;
+  image.height = _iHeight;
+
+  fprintf(stderr, "Info: Writing 16-bit RGBA %s\n", szFilename);
+  if (!png_image_write_to_file(&image, szFilename, 0/*convert_to_8bit*/, (png_bytep) pixelData, 0/*row_stride*/, NULL/*colormap*/))
+  {
+    fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+  }
+
+  png_image_free(&image);
+}
+
 // PARALLELISIERUNG - Worker-Thread Funktion
 static void* processFileWorker(void* arg) {
     ThreadData* data = (ThreadData*)arg;
@@ -729,8 +755,22 @@ static void* processFileWorker(void* arg) {
     }
     
     unsigned short* PixelData16 = NULL;
+    RGBA16* PixelData16Alpha = NULL;
     
-    if (opts->output16bit) {
+    if (opts->output16bit && opts->alphaNoData) {
+        // 16-Bit Grayscale + Alpha für transparente NoData
+        PixelData16Alpha = (RGBA16*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(RGBA16));
+        if (PixelData16Alpha == NULL) {
+            pthread_mutex_lock(data->outputMutex);
+            fprintf(stderr, "Error: Can't allocate 16-bit RGBA pixel data block for %s (%zu×%zu pixels)\n", 
+                    fi->szFilename, fi->iWidth, fi->iHeight);
+            pthread_mutex_unlock(data->outputMutex);
+            free(iElevationData);
+            iElevationData = NULL;
+            *(data->globalResult) = 1;
+            return NULL;
+        }
+    } else if (opts->output16bit) {
         // 16-Bit Grayscale-Daten mit überlaufgeschützter Allokation
         PixelData16 = (unsigned short*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(unsigned short));
         if (PixelData16 == NULL) {
@@ -808,7 +848,12 @@ static void* processFileWorker(void* arg) {
         // Kurven-Mapping anwenden
         float curvedValue = ApplyCurveMapping(normalizedValue, opts->curveType, opts->gamma);
         
-        if (opts->output16bit) {
+        if (opts->output16bit && opts->alphaNoData) {
+            // 16-Bit Grayscale + Alpha: NoData-Pixel transparent machen
+            uint16_t pixelValue = (uint16_t)(curvedValue * 65535.0f);
+            PixelData16Alpha[m].y = pixelValue;
+            PixelData16Alpha[m].a = isNoDataPixel ? 0 : 65535;  // Transparent für NoData, opaque für gültige Daten
+        } else if (opts->output16bit) {
             // 16-Bit Grayscale: Volle 16-Bit-Range nutzen (0-65535)
             PixelData16[m] = (unsigned short)(curvedValue * 65535.0f);
         } else if (opts->alphaNoData) {
@@ -830,7 +875,9 @@ static void* processFileWorker(void* arg) {
     
     // PNG schreiben (thread-safe mit lokalen PixelData)
     pthread_mutex_lock(data->outputMutex);
-    if (opts->output16bit) {
+    if (opts->output16bit && opts->alphaNoData) {
+        WritePNG16BitWithAlpha(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16Alpha);
+    } else if (opts->output16bit) {
         WritePNG16BitGrayscale(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16);
     } else if (opts->alphaNoData) {
         WritePNGWithAlpha(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelDataRGBA);
@@ -846,7 +893,10 @@ static void* processFileWorker(void* arg) {
     // Cleanup für diesen Thread
     free(iElevationData);
     iElevationData = NULL;
-    if (opts->output16bit) {
+    if (opts->output16bit && opts->alphaNoData) {
+        free(PixelData16Alpha);
+        PixelData16Alpha = NULL;
+    } else if (opts->output16bit) {
         free(PixelData16);
         PixelData16 = NULL;
     } else if (opts->alphaNoData) {
