@@ -1,17 +1,41 @@
 /*
+ * HGT2PNG - Professional Heightmap Converter v1.1.0
+ * 
+ * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  *********************************************************************************
- *** Project:            Heightmap Generator
- *** Creation Date:      2016-01-01
+ *** Project:            HGT to PNG Heightmap Converter with OpenMP Optimization
+ *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite)
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
- *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
+ *** Objective:          Professional conversion of SRTM HGT files to PNG displacement maps
  *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 $(pkg-config --cflags --libs libpng) -lm -pthread -fopenmp -mavx2 -O3
  *** Dependencies:       libpng-dev: sudo apt-get install libpng-dev pkg-config
- *** Modification Log:  
- *** Version Date        Modified By   Modification Details
+ *** GitHub:             https://github.com/PeterEbel/hgt2png
+ *** 
+ *** Version History:
  *** ------------------------------------------------------------------------------
  *** 1.0.0   2016-01-01  Ebel          Initial creation of the script
  *** 1.0.1   2023-10-23  Ebel          Link switch changed to -lpng
- *** 1.1.0   2025-10-23  Ebel          Added Procedural Detail Generation and multithreading support
+ *** 1.1.0   2025-10-27  Ebel          OpenMP optimization, 16-bit PNG, alpha transparency,
+ ***                                   const-correctness, memory safety, professional features
  **********************************************************************************
 */
 

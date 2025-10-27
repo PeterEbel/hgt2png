@@ -1,5 +1,6 @@
 # Makefile for hgt2png - HGT to PNG Heightmap Converter  
-# Author: Peter Ebel
+# Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
+# Licensed under MIT License - see LICENSE file for details
 # Version: 1.1.0 with OpenMP optimization
 
 # Compiler and flags
