@@ -1149,20 +1149,29 @@ int extractGeoBounds(const char* filename, float* south, float* north, float* we
 short int* AddProceduralDetail(short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType) {
     
-    int newWidth = originalWidth * scaleFactor;
-    int newHeight = originalHeight * scaleFactor;
+    size_t newWidth, newHeight;
     
-    short int* detailedData = malloc(newWidth * newHeight * sizeof(short int));
-    if (!detailedData) {
-        fprintf(stderr, "ERROR: Cannot allocate memory for detailed heightmap\n");
+    // Sichere Berechnung der neuen Dimensionen mit Überlaufschutz
+    if (!safe_multiply_size_t((size_t)originalWidth, (size_t)scaleFactor, &newWidth) ||
+        !safe_multiply_size_t((size_t)originalHeight, (size_t)scaleFactor, &newHeight)) {
+        fprintf(stderr, "ERROR: Dimension overflow in procedural detail generation: %d×%d scale %d\n", 
+                originalWidth, originalHeight, scaleFactor);
         return NULL;
     }
     
-    fprintf(stderr, "INFO: Generating %dx%d detailed heightmap (intensity: %.1f)\n", 
+    // Sichere Speicherallokation mit Überlaufschutz
+    short int* detailedData = (short int*)safe_malloc_pixels(newWidth, newHeight, sizeof(short int));
+    if (!detailedData) {
+        fprintf(stderr, "ERROR: Cannot allocate memory for detailed heightmap (%zu×%zu pixels)\n", 
+                newWidth, newHeight);
+        return NULL;
+    }
+    
+    fprintf(stderr, "INFO: Generating %zu×%zu detailed heightmap (intensity: %.1f)\n", 
             newWidth, newHeight, detailIntensity);
     
-    for (int y = 0; y < newHeight; y++) {
-        for (int x = 0; x < newWidth; x++) {
+    for (size_t y = 0; y < newHeight; y++) {
+        for (size_t x = 0; x < newWidth; x++) {
             // Basis-Höhe durch bilineare Interpolation
             float srcX = (float)x / scaleFactor;
             float srcY = (float)y / scaleFactor;
@@ -1201,7 +1210,7 @@ short int* AddProceduralDetail(short int* originalData, int originalWidth, int o
         
         // Intelligente Fortschrittsanzeige - Division durch 0 vermeiden
         static int lastProgress = -1;  // Verhindert doppelte Ausgaben
-        int currentProgress = (y * 100) / newHeight;
+        int currentProgress = (int)((y * 100) / newHeight);  // size_t zu int cast für Progress
         
         // Progress-Intervall abhängig von Bildgröße
         int progressInterval;
