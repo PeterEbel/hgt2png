@@ -83,6 +83,8 @@ typedef struct tag_FileInfoHGT {
   short int iMinElevation;
   short int iMaxElevation;
   unsigned long ulFilesize;
+  int hgtType;              // Pro-Datei HGT-Typ statt globaler Variable
+  int noDataCount;          // Anzahl NoData-Pixel für Statistik
 } FileInfo, *pFileInfo;
 
 FileInfo *fi;
@@ -114,13 +116,22 @@ int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, P
 // Hilfsfunktion: Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
 void generateOutputFilename(const char* inputPath, char* outputPath);
 
+// NoData-Behandlung
+int isNoDataValue(short int value, int hgtType);
+short int processElevationValue(short int rawValue, int hgtType, int* noDataCount);
+
 const int HGT_TYPE_30 = 1201;
 const int HGT_TYPE_90 = 3601;
 const int HGT_TYPE_UNKNOWN = -1;
 const unsigned long HGT_TYPE_30_SIZE = 1201 * 1201 * sizeof(short int);
 const unsigned long HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(short int);
 
-int iHGTType;
+// NoData Konstanten (SRTM Standard)
+const short int NODATA_VALUE_BE = (short int)0x8000;  // Big Endian: -32768
+const short int NODATA_VALUE_LE = (short int)0x0080;  // Little Endian: 128 (nach Byte-Swap)
+const short int NODATA_REPLACEMENT = 0;                // Ersatzwert für NoData
+
+// iHGTType globale Variable entfernt - jetzt pro-Datei in FileInfo.hgtType
 
 char OutputHeightmapFile[_MAX_PATH];
 
@@ -264,12 +275,12 @@ int main(int argc, char *argv[])
 
     if (fi[i].ulFilesize == HGT_TYPE_30_SIZE)
     {
-      iHGTType = HGT_TYPE_30;
+      fi[i].hgtType = HGT_TYPE_30;  // Pro-Datei statt global
       fi[i].iWidth = 1201;
       fi[i].iHeight = 1201;
     } else if (fi[i].ulFilesize == HGT_TYPE_90_SIZE)
     {
-      iHGTType = HGT_TYPE_90;
+      fi[i].hgtType = HGT_TYPE_90;  // Pro-Datei statt global
       fi[i].iWidth = 3601;
       fi[i].iHeight = 3601;
     }
@@ -281,11 +292,11 @@ int main(int argc, char *argv[])
       memcpy(sTmp, &sCurrentFilename[i][10], 4);
       sTmp[4] = '\0';
       fi[i].iHeight = atoi(sTmp);
-      iHGTType = fi[i].iWidth * fi[i].iHeight;
+      fi[i].hgtType = fi[i].iWidth * fi[i].iHeight;  // Pro-Datei statt global
       free(sCurrentFilename[i]);
     }
 
-    if (iHGTType == HGT_TYPE_UNKNOWN) {
+    if (fi[i].hgtType == HGT_TYPE_UNKNOWN) {  // Pro-Datei Überprüfung
       fprintf(stderr, "Error: %s has an unknown HGT type\n", fi[i].szFilename);
       fclose(InFile);
       return 1;
@@ -307,21 +318,32 @@ int main(int argc, char *argv[])
 
     iCurrentMaxElevation = 0;
     iCurrentMinElevation = 9999;
+    fi[i].noDataCount = 0;  // Initialisiere NoData-Zähler
+    
     for (unsigned long j = 0; j < fi[i].ulFilesize / 2; j++)
     {
-      if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90)
-      {
-        iElevationData[j] = (short)(((iElevationData[j] & 0xff) << 8) | ((iElevationData[j] & 0xff00) >> 8));
+      // Korrekte NoData-Behandlung mit neuer Funktion
+      iElevationData[j] = processElevationValue(iElevationData[j], fi[i].hgtType, &fi[i].noDataCount);
+      
+      // Min/Max nur für gültige Werte (nicht für NoData-Ersatzwerte)
+      if (iElevationData[j] != NODATA_REPLACEMENT) {
+        if (iElevationData[j] < iCurrentMinElevation) iCurrentMinElevation = iElevationData[j];
+        if (iElevationData[j] > iCurrentMaxElevation) iCurrentMaxElevation = iElevationData[j];
       }
-      if (iElevationData[j] < 0) iElevationData[j] = 0;
-      if (iElevationData[j] > _MAX_HEIGHT) iElevationData[j] = _MAX_HEIGHT; //TO-DO
-      if (iElevationData[j] < iCurrentMinElevation) iCurrentMinElevation = iElevationData[j];
-      if (iElevationData[j] > iCurrentMaxElevation) iCurrentMaxElevation = iElevationData[j];
     }
 
     if (iCurrentMinElevation < iOverallMinElevation) iOverallMinElevation = iCurrentMinElevation;
     if (iCurrentMaxElevation > iOverallMaxElevation) iOverallMaxElevation = iCurrentMaxElevation;
-    fprintf(stderr, "- MIN=%4d MAX=%4d\n", iOverallMinElevation, iOverallMaxElevation);
+    
+    // NoData-Statistik ausgeben
+    if (fi[i].noDataCount > 0) {
+        unsigned long totalPixels = fi[i].ulFilesize / 2;
+        float noDataPercent = (float)fi[i].noDataCount / totalPixels * 100.0f;
+        fprintf(stderr, "- MIN=%4d MAX=%4d, NoData=%d (%.1f%%)\n", 
+                iCurrentMinElevation, iCurrentMaxElevation, fi[i].noDataCount, noDataPercent);
+    } else {
+        fprintf(stderr, "- MIN=%4d MAX=%4d\n", iCurrentMinElevation, iCurrentMaxElevation);
+    }
     
     free(iElevationData);
     fclose(InFile);
@@ -433,15 +455,19 @@ void* processFileWorker(void* arg) {
 
     // PROCEDURAL DETAIL GENERATION
     if (opts->enableDetail) {
-        // Byte-Swapping vor der Detail-Generation durchführen
+        // Korrekte NoData-Behandlung für Worker-Thread
+        int threadNoDataCount = 0;
         for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++) {
-            if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90) {
-                iElevationData[pre] = (short)(((iElevationData[pre] & 0xff) << 8) | 
-                                            ((iElevationData[pre] & 0xff00) >> 8));
-            }
-            if (iElevationData[pre] < 0) iElevationData[pre] = 0;
-            if (iElevationData[pre] > _MAX_HEIGHT) iElevationData[pre] = _MAX_HEIGHT;
+            iElevationData[pre] = processElevationValue(iElevationData[pre], fi->hgtType, &threadNoDataCount);
         }
+        
+        // NoData-Statistik thread-safe aktualisieren
+        pthread_mutex_lock(data->outputMutex);
+        fi->noDataCount += threadNoDataCount;
+        if (opts->verbose && threadNoDataCount > 0) {
+            fprintf(stderr, "INFO: Found %d NoData values in %s\n", threadNoDataCount, fi->szFilename);
+        }
+        pthread_mutex_unlock(data->outputMutex);
         
         // Procedural Detail hinzufügen
         short int* detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight, 
@@ -481,11 +507,10 @@ void* processFileWorker(void* arg) {
     // Elevation zu RGB konvertieren
     for (unsigned long m = 0; m < (fi->ulFilesize) / 2; m++) {
         if (!opts->enableDetail) {
-            // Byte-Swapping nur wenn keine Procedural Details verwendet werden
-            if (iHGTType == HGT_TYPE_30 || iHGTType == HGT_TYPE_90) {
-                iElevationData[m] = (short)(((iElevationData[m] & 0xff) << 8) | 
-                                          ((iElevationData[m] & 0xff00) >> 8));
-            }
+            // Korrekte NoData-Behandlung ohne Detail-Generation
+            int threadNoDataCount = 0;
+            iElevationData[m] = processElevationValue(iElevationData[m], fi->hgtType, &threadNoDataCount);
+            fi->noDataCount += threadNoDataCount;  // Thread-safe da sequentiell
         }
 
         if (iOverallMaxElevation != 0) {
@@ -798,6 +823,50 @@ void generateOutputFilename(const char* inputPath, char* outputPath) {
         // Falls keine .hgt Endung gefunden wurde, hänge .png an
         strcat(outputPath, ".png");
     }
+}
+
+// NODATA-BEHANDLUNG
+
+// Prüft ob ein Rohwert ein NoData-Wert ist (vor oder nach Byte-Swap)
+int isNoDataValue(short int value, int hgtType) {
+    // Nur für SRTM-Daten (30m/90m) NoData-Erkennung
+    if (hgtType != HGT_TYPE_30 && hgtType != HGT_TYPE_90) {
+        return 0;
+    }
+    
+    // NoData-Wert in beiden Byte-Orders erkennen
+    return (value == NODATA_VALUE_BE || value == NODATA_VALUE_LE);
+}
+
+// Verarbeitet einen Höhenwert: Byte-Swap + NoData-Behandlung + Clamping
+short int processElevationValue(short int rawValue, int hgtType, int* noDataCount) {
+    // 1. NoData-Erkennung VOR Byte-Swap (kritisch!)
+    if (isNoDataValue(rawValue, hgtType)) {
+        if (noDataCount != NULL) {
+            (*noDataCount)++;
+        }
+        return NODATA_REPLACEMENT;  // Ersatzwert für NoData
+    }
+    
+    // 2. Byte-Swapping für SRTM-Daten
+    short int swappedValue = rawValue;
+    if (hgtType == HGT_TYPE_30 || hgtType == HGT_TYPE_90) {
+        swappedValue = (short)(((rawValue & 0xff) << 8) | ((rawValue & 0xff00) >> 8));
+    }
+    
+    // 3. Nochmalige NoData-Prüfung nach Byte-Swap (Sicherheit)
+    if (isNoDataValue(swappedValue, hgtType)) {
+        if (noDataCount != NULL) {
+            (*noDataCount)++;
+        }
+        return NODATA_REPLACEMENT;
+    }
+    
+    // 4. Clamping auf gültige Höhenwerte
+    if (swappedValue < 0) swappedValue = 0;
+    if (swappedValue > _MAX_HEIGHT) swappedValue = _MAX_HEIGHT;
+    
+    return swappedValue;
 }
 
 // PARAMETER-MANAGEMENT FUNKTIONEN
