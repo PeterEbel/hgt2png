@@ -494,18 +494,20 @@ void* processFileWorker(void* arg) {
         }
     }
 
-    // Speicher für Pixel Data allokieren
-    if ((PixelData = (RGB*)malloc(fi->ulFilesize * sizeof(struct tag_RGB))) == NULL) {
+    // Speicher für Pixel Data allokieren (korrekte Größe: width*height statt ulFilesize)
+    unsigned long pixelCount = fi->iWidth * fi->iHeight;
+    if ((PixelData = (RGB*)malloc(pixelCount * sizeof(struct tag_RGB))) == NULL) {
         pthread_mutex_lock(data->outputMutex);
-        fprintf(stderr, "Error: Can't allocate pixel data block for %s\n", fi->szFilename);
+        fprintf(stderr, "Error: Can't allocate pixel data block for %s (%lu pixels)\n", 
+                fi->szFilename, pixelCount);
         pthread_mutex_unlock(data->outputMutex);
         free(iElevationData);
         *(data->globalResult) = 1;
         return NULL;
     }
      
-    // Elevation zu RGB konvertieren
-    for (unsigned long m = 0; m < (fi->ulFilesize) / 2; m++) {
+    // Elevation zu RGB konvertieren (korrekte Pixel-Anzahl verwenden)
+    for (unsigned long m = 0; m < pixelCount; m++) {
         if (!opts->enableDetail) {
             // Korrekte NoData-Behandlung ohne Detail-Generation
             int threadNoDataCount = 0;
