@@ -4,8 +4,8 @@
  *** Creation Date:      2016-01-01
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Conversion of binary HGT files into PNG greyscale pictures
- *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 -lpng -lm -Wall -Wextra
- *** Dependencies:       libpng: sudo apt-get install libpng-dev
+ *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 $(pkg-config --cflags --libs libpng) -lm -pthread
+ *** Dependencies:       libpng-dev: sudo apt-get install libpng-dev pkg-config
  *** Modification Log:  
  *** Version Date        Modified By   Modification Details
  *** ------------------------------------------------------------------------------
@@ -28,7 +28,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 	
-#include "/usr/include/libpng/png.h"
+#include <png.h>
 
 #define ChannelBlend_Multiply(A,B)   ((unsigned char)((A * B) / 255))
 
