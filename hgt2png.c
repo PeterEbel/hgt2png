@@ -226,6 +226,11 @@ int main(int argc, char *argv[])
     if (opts.verbose) fprintf(stderr, "INFO: Filelist Mode\n");
     if ((FileList = fopen(inputFile, "rb")) == NULL) {
       fprintf(stderr, "Error: Can't open file list %s\n", inputFile);
+      // Cleanup falls bereits Single-File allokiert wurde
+      if (iNumFilesToConvert > 0 && sCurrentFilename[0] != NULL) {
+        free(sCurrentFilename[0]);
+        sCurrentFilename[0] = NULL;
+      }
       return 1;
     }
 
