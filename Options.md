@@ -16,7 +16,6 @@ HGT2PNG v1.1.0 ist ein professioneller Heightmap-Converter, der SRTM HGT-Dateien
 
 ### `-s, --scale-factor <n>` (Standard: 3)
 
-**Zweck:** Erhöht die Auflösung durch procedurale Detail-Generierung
 
 **Werte:**
 - `1` = Original-Auflösung (3601×3601 für SRTM-1)
