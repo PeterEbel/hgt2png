@@ -186,15 +186,15 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 
 ### GIS Integration
 ```json
-// Generated metadata (example)
+// Generated metadata (actual structure)
 {
-  "elevation_range": {"min_meters": 54, "max_meters": 502},
-  "spatial_info": {
-    "pixel_pitch_meters": 30.0,
-    "geographic_bounds": {
-      "south": 49.0, "north": 50.0,
-      "west": 4.0, "east": 5.0
-    }
+  "elevation": {"min_meters": 54, "max_meters": 502},
+  "scaling": {
+    "pixel_pitch_meters": 90.0,
+    "world_size_meters": {"width": 324090.0, "height": 324090.0}
+  },
+  "geographic": {
+    "bounds": {"south": 49.0, "north": 50.0, "west": 4.0, "east": 5.0}
   }
 }
 ```

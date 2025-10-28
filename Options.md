@@ -270,13 +270,16 @@ with open("N49E004.json", "r") as f:
 bpy.ops.mesh.primitive_plane_add()
 plane = bpy.context.active_object
 
-# Größe basierend auf realen Koordinaten
-real_width = (metadata["spatial_info"]["geographic_bounds"]["east"] - 
-              metadata["spatial_info"]["geographic_bounds"]["west"]) * 111000  # Grad zu Meter
-real_height = (metadata["spatial_info"]["geographic_bounds"]["north"] - 
-               metadata["spatial_info"]["geographic_bounds"]["south"]) * 111000
+# Größe basierend auf realen Koordinaten (aus tatsächlicher JSON-Struktur)
+bounds = metadata["geographic"]["bounds"]
+real_width = (bounds["east"] - bounds["west"]) * 111000  # Grad zu Meter (111km/°)
+real_height = (bounds["north"] - bounds["south"]) * 111000
 
 plane.scale = (real_width/2, real_height/2, 1)
+
+# Subdivision für Displacement (wichtig!)
+subdivision_mod = plane.modifiers.new(name="Subdivision", type='SUBSURF')
+subdivision_mod.levels = 6  # Mehr Geometrie für Details
 
 # Displacement Modifier hinzufügen
 displacement_mod = plane.modifiers.new(name="Heightmap", type='DISPLACE')
@@ -290,9 +293,28 @@ material.use_nodes = True
 texture_node = material.node_tree.nodes.new(type='ShaderNodeTexImage')
 texture_node.image = bpy.data.images.load("N49E004.png")
 
+# ColorRamp für bessere Displacement-Kontrolle
+colorramp_node = material.node_tree.nodes.new(type='ShaderNodeValToRGB')
+material.node_tree.links.new(texture_node.outputs['Color'], colorramp_node.inputs['Fac'])
+
+# Displacement Output
+displacement_output = material.node_tree.nodes.new(type='ShaderNodeDisplacement')
+material.node_tree.links.new(colorramp_node.outputs['Color'], displacement_output.inputs['Height'])
+material.node_tree.links.new(displacement_output.outputs['Displacement'], 
+                             material.node_tree.nodes['Material Output'].inputs['Displacement'])
+
 # Höhen-Skalierung basierend auf realen Daten
-height_range = metadata["elevation_range"]["max_meters"] - metadata["elevation_range"]["min_meters"]
-displacement_mod.strength = height_range
+elevation = metadata["elevation"]
+height_range = elevation["max_meters"] - elevation["min_meters"]
+displacement_mod.strength = height_range / 100  # Skalierung für Blender-Units
+
+# Texture zu Displacement verknüpfen
+displacement_mod.texture = bpy.data.textures.new("HeightmapTexture", type='IMAGE')
+displacement_mod.texture.image = texture_node.image
+
+print(f"Terrain erstellt: {real_width/1000:.1f}km x {real_height/1000:.1f}km")
+print(f"Höhenbereich: {elevation['min_meters']}m - {elevation['max_meters']}m")
+print(f"Displacement-Stärke: {displacement_mod.strength:.2f}")
 ```
 
 #### **2. GIS-Workflow Integration**
@@ -310,26 +332,82 @@ done
 
 #### **3. Game Engine Integration (Unity/Unreal)**
 ```csharp
-// Unity C# - Automatische Terrain-Import
+// Unity C# - Automatische Terrain-Import (korrigierte JSON-Struktur)
+using UnityEngine;
+using System.IO;
+
+[System.Serializable]
+public class ElevationData
+{
+    public float min_meters;
+    public float max_meters;
+    public float range_meters;
+}
+
+[System.Serializable]
+public class ScalingData
+{
+    public float pixel_pitch_meters;
+    public int scale_factor;
+    public WorldSize world_size_meters;
+}
+
+[System.Serializable]
+public class WorldSize
+{
+    public float width;
+    public float height;
+}
+
 [System.Serializable]
 public class HeightmapMetadata
 {
-    public float pixel_pitch_meters;
-    public int width_pixels;
-    public int height_pixels;
-    public ElevationRange elevation_range;
+    public string source_file;
+    public string png_file;
+    public ElevationData elevation;
+    public ScalingData scaling;
 }
 
 // Terrain aus PNG + JSON erstellen
-TerrainData terrainData = new TerrainData();
-HeightmapMetadata meta = JsonUtility.FromJson<HeightmapMetadata>(File.ReadAllText("terrain.json"));
-
-terrainData.heightmapResolution = meta.width_pixels;
-terrainData.size = new Vector3(
-    meta.pixel_pitch_meters * meta.width_pixels, 
-    meta.elevation_range.max_meters - meta.elevation_range.min_meters,
-    meta.pixel_pitch_meters * meta.height_pixels
-);
+public void CreateTerrainFromHGT2PNG(string jsonPath, string pngPath)
+{
+    // Metadaten laden
+    string jsonContent = File.ReadAllText(jsonPath);
+    HeightmapMetadata meta = JsonUtility.FromJson<HeightmapMetadata>(jsonContent);
+    
+    // Terrain Data erstellen
+    TerrainData terrainData = new TerrainData();
+    
+    // Auflösung aus PNG ermitteln
+    Texture2D heightmap = Resources.Load<Texture2D>(Path.GetFileNameWithoutExtension(pngPath));
+    terrainData.heightmapResolution = heightmap.width;
+    
+    // Real-World-Größe anwenden
+    terrainData.size = new Vector3(
+        meta.scaling.world_size_meters.width / 1000f,  // Meter zu Unity-Units (km)
+        (meta.elevation.max_meters - meta.elevation.min_meters) / 10f,  // Höhe skaliert
+        meta.scaling.world_size_meters.height / 1000f
+    );
+    
+    // Heightmap anwenden
+    float[,] heights = new float[heightmap.width, heightmap.height];
+    for (int x = 0; x < heightmap.width; x++)
+    {
+        for (int y = 0; y < heightmap.height; y++)
+        {
+            Color pixel = heightmap.GetPixel(x, y);
+            heights[y, x] = pixel.grayscale;  // Normalized height
+        }
+    }
+    terrainData.SetHeights(0, 0, heights);
+    
+    // Terrain GameObject erstellen
+    GameObject terrainGO = Terrain.CreateTerrainGameObject(terrainData);
+    terrainGO.name = $"Terrain_{meta.source_file}";
+    
+    Debug.Log($"Terrain erstellt: {meta.scaling.world_size_meters.width/1000:F1}km x {meta.scaling.world_size_meters.height/1000:F1}km");
+    Debug.Log($"Höhenbereich: {meta.elevation.min_meters}m - {meta.elevation.max_meters}m");
+}
 ```
 
 ---
