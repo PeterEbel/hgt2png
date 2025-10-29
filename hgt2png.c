@@ -1087,7 +1087,25 @@ static float SimpleNoise(int x, int y, int seed) {
     return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
 }
 
-// Fraktales Noise für verschiedene Detailgrade
+// Bilineare Interpolation für Noise-Sampling (eliminiert Quantisierung)
+static float BilinearNoiseInterpolate(float x, float y, int seed) {
+    int x0 = (int)floorf(x);
+    int y0 = (int)floorf(y);
+    float fx = x - x0;
+    float fy = y - y0;
+    
+    float v00 = SimpleNoise(x0, y0, seed);
+    float v10 = SimpleNoise(x0 + 1, y0, seed);
+    float v01 = SimpleNoise(x0, y0 + 1, seed);
+    float v11 = SimpleNoise(x0 + 1, y0 + 1, seed);
+    
+    float v0 = v00 * (1.0f - fx) + v10 * fx;
+    float v1 = v01 * (1.0f - fx) + v11 * fx;
+    
+    return v0 * (1.0f - fy) + v1 * fy;
+}
+
+// Fraktales Noise für verschiedene Detailgrade (mit Sub-Pixel-Precision)
 static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed) {
     float total = 0.0f;
     float frequency = scale;
@@ -1095,7 +1113,8 @@ static float FractalNoise(float x, float y, int octaves, float persistence, floa
     float maxValue = 0.0f;
     
     for (int i = 0; i < octaves; i++) {
-        total += SimpleNoise((int)(x * frequency), (int)(y * frequency), seed + i) * amplitude;
+        // Bilineare Interpolation statt Integer-Casting eliminiert Quantisierung
+        total += BilinearNoiseInterpolate(x * frequency, y * frequency, seed + i) * amplitude;
         maxValue += amplitude;
         amplitude *= persistence;
         frequency *= 2.0f;
@@ -1307,16 +1326,18 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
             // Detail basierend auf Terrain-Typ anpassen
             float heightFactor = GetHeightTypeFactor(baseHeight);
             
-            // Finales Detail berechnen
+            // Finales Detail berechnen mit Sub-Pixel-Precision
             float detailVariation = combinedNoise * detailIntensity * slopeMultiplier * heightFactor;
             
-            short int finalHeight = baseHeight + (short int)(detailVariation);
+            // Float-Precision für finale Höhe beibehalten (gegen Terrassierung)
+            float finalHeight = (float)baseHeight + detailVariation;
             
             // Sicherstellen, dass Werte im gültigen Bereich bleiben
-            if (finalHeight < 0) finalHeight = 0;
-            if (finalHeight > _MAX_HEIGHT) finalHeight = _MAX_HEIGHT;
+            if (finalHeight < 0.0f) finalHeight = 0.0f;
+            if (finalHeight > (float)_MAX_HEIGHT) finalHeight = (float)_MAX_HEIGHT;
             
-            detailedData[y * newWidth + x] = finalHeight;
+            // Runden statt Truncation für bessere Sub-Pixel-Verteilung
+            detailedData[y * newWidth + x] = (short int)(finalHeight + 0.5f);
         }
     }
     
