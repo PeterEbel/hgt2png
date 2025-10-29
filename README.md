@@ -1,4 +1,3 @@
-# 🏔️ HGT2PNG v1.1.0 - Professional Heightmap Converter
 
 High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation and professional 3D workflow integration.
 

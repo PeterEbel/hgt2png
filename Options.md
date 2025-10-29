@@ -30,7 +30,6 @@ HGT2PNG v1.1.0 ist ein professioneller Heightmap-Converter, der SRTM HGT-Dateien
 
 ```bash
 # Beispiele
-./hgt2png -s 3 terrain.hgt          # Empfohlen für Produktion
 ./hgt2png -s 4 terrain.hgt          # Sehr hochwertig, braucht Zeit
 ```
 
