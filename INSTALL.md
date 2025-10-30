@@ -1,90 +1,90 @@
 # HGT2PNG Installation Guide
 
-## Systemvoraussetzungen
+## System Requirements
 
-### **Mindestanforderungen:**
+### **Minimum Requirements:**
 - **OS:** Linux (Ubuntu/Debian/Mint 20.04+) 
-- **RAM:** 4GB minimum, 8GB+ empfohlen für große Dateien
-- **CPU:** x86_64 mit AVX2-Unterstützung (Intel Core i3+ oder AMD Ryzen)
-- **Speicher:** ~50MB für Programm + 500MB pro 25MB HGT-Datei
+- **RAM:** 4GB minimum, 8GB+ recommended for large files
+- **CPU:** x86_64 with AVX2 support (Intel Core i3+ or AMD Ryzen)
+- **Storage:** ~50MB for program + 500MB per 25MB HGT file
 
-### **Abhängigkeiten installieren:**
+### **Installing Dependencies:**
 
 #### **Ubuntu/Debian/Linux Mint:**
 ```bash
-# Basis-Entwicklungstools
+# Basic development tools
 sudo apt update
 sudo apt install build-essential
 
-# Erforderliche Libraries
+# Required libraries
 sudo apt install libpng-dev pkg-config
 
-# Optional: OpenMP-Unterstützung (meist schon in gcc enthalten)
+# Optional: OpenMP support (usually included in gcc)
 sudo apt install libomp-dev
 
-# Überprüfung der Installation
-pkg-config --exists libpng && echo "✓ libpng OK" || echo "✗ libpng fehlt"
-gcc --version | grep -q "gcc" && echo "✓ GCC OK" || echo "✗ GCC fehlt"
+# Verify installation
+pkg-config --exists libpng && echo "✓ libpng OK" || echo "✗ libpng missing"
+gcc --version | grep -q "gcc" && echo "✓ GCC OK" || echo "✗ GCC missing"
 ```
 
 #### **Fedora/RHEL/CentOS:**
 ```bash
-# Basis-Entwicklungstools
+# Basic development tools
 sudo dnf groupinstall "Development Tools"
 
-# Erforderliche Libraries  
+# Required libraries  
 sudo dnf install libpng-devel pkgconfig
 
-# OpenMP (meist schon enthalten)
+# OpenMP (usually included)
 sudo dnf install libgomp-devel
 ```
 
 #### **Arch Linux:**
 ```bash
-# Basis-Entwicklungstools
+# Basic development tools
 sudo pacman -S base-devel
 
-# Erforderliche Libraries
+# Required libraries
 sudo pacman -S libpng pkg-config
 ```
 
-## Kompilierung
+## Compilation
 
-### **Methode 1: Automatisch mit Makefile (Empfohlen)**
+### **Method 1: Automatic with Makefile (Recommended)**
 
 ```bash
-# Repository klonen oder Dateien kopieren
+# Clone repository or copy files
 git clone https://github.com/PeterEbel/hgt2png.git
 cd hgt2png
 
-# Dependencies überprüfen
+# Check dependencies
 make check-deps
 
-# Kompilieren (optimiert)
+# Compile (optimized)
 make
 
-# Testen
+# Test
 ./hgt2png --help
 ```
 
-### **Methode 2: Manuell (falls Makefile-Probleme)**
+### **Method 2: Manual (if Makefile issues)**
 
 ```bash
-# Standard-Kompilierung (ohne OpenMP)
+# Standard compilation (without OpenMP)
 gcc -std=gnu99 -Wall -O2 hgt2png.c -o hgt2png \
     $(pkg-config --cflags --libs libpng) -lm -pthread
 
-# Optimierte Kompilierung (mit OpenMP + AVX2)  
+# Optimized compilation (with OpenMP + AVX2)  
 gcc -std=gnu99 -Wall -O3 hgt2png.c -o hgt2png \
     $(pkg-config --cflags --libs libpng) -lm -pthread -fopenmp -mavx2
 
-# Fallback (wenn pkg-config fehlt)
+# Fallback (if pkg-config missing)
 gcc -std=gnu99 -Wall -O2 hgt2png.c -o hgt2png -lpng -lm -pthread
 ```
 
-### **Methode 3: Aktualisiertes Makefile verwenden**
+### **Method 3: Using Updated Makefile**
 
-Das mitgelieferte Makefile ist veraltet. Hier ist eine aktualisierte Version:
+The included Makefile is outdated. Here's an updated version:
 
 ```makefile
 # Makefile for hgt2png v1.1.0 - OpenMP-optimized
@@ -119,14 +119,14 @@ clean:
 
 check-deps:
 	@echo "Checking dependencies..."
-	@pkg-config --exists $(PKG_DEPS) && echo "✓ libpng OK" || (echo "✗ libpng fehlt - installiere: sudo apt install libpng-dev" && false)
-	@gcc --version >/dev/null 2>&1 && echo "✓ GCC OK" || (echo "✗ GCC fehlt - installiere: sudo apt install build-essential" && false)
+	@pkg-config --exists $(PKG_DEPS) && echo "✓ libpng OK" || (echo "✗ libpng missing - install: sudo apt install libpng-dev" && false)
+	@gcc --version >/dev/null 2>&1 && echo "✓ GCC OK" || (echo "✗ GCC missing - install: sudo apt install build-essential" && false)
 	@echo "Dependencies OK!"
 
 .PHONY: all nomp clean check-deps
 ```
 
-## Problembehandlung
+## Troubleshooting
 
 ### **"libpng not found"**
 ```bash
@@ -139,117 +139,117 @@ pkg-config --libs libpng
 
 ### **"OpenMP not supported"**
 ```bash
-# Ohne OpenMP kompilieren (langsamere aber kompatible Version)
+# Compile without OpenMP (slower but compatible version)
 gcc -std=gnu99 -O2 hgt2png.c -o hgt2png \
     $(pkg-config --cflags --libs libpng) -lm -pthread
 
-# Oder explizit aktivieren
+# Or explicitly enable
 sudo apt install libomp-dev
 ```
 
 ### **"AVX2 not supported"**
 ```bash
-# Ohne AVX2 kompilieren (ältere CPUs)
+# Compile without AVX2 (older CPUs)
 gcc -std=gnu99 -fopenmp -O3 hgt2png.c -o hgt2png \
     $(pkg-config --cflags --libs libpng) -lm -pthread
 
-# CPU-Features prüfen
+# Check CPU features
 cat /proc/cpuinfo | grep -o avx2
 ```
 
 ### **"Permission denied"**
 ```bash
-# Ausführungsrechte setzen
+# Set executable permissions
 chmod +x hgt2png
 
-# Oder systemweit installieren
+# Or install system-wide
 sudo make install
 ```
 
-## Performance-Optimierung
+## Performance Optimization
 
-### **CPU-Optimierung:**
+### **CPU Optimization:**
 ```bash
-# Automatische CPU-Erkennung
+# Automatic CPU detection
 gcc -march=native -O3 hgt2png.c -o hgt2png \
     $(pkg-config --cflags --libs libpng) -lm -pthread -fopenmp
 
-# Verschiedene Architekturen
+# Different architectures
 gcc -march=skylake ...    # Intel Skylake+
 gcc -march=znver2 ...     # AMD Zen2+
-gcc -march=core2 ...      # Ältere CPUs
+gcc -march=core2 ...      # Older CPUs
 ```
 
-### **Thread-Konfiguration:**
+### **Thread Configuration:**
 ```bash
-# Anzahl Threads festlegen
+# Set thread count
 export OMP_NUM_THREADS=8
 
-# Oder per Kommandozeile
+# Or via command line
 ./hgt2png -t 8 terrain.hgt
 ```
 
-## Benötigte Dateien für Distribution
+## Required Files for Distribution
 
 ### **Minimal (Source-only):**
 ```
-hgt2png.c          # Hauptprogramm
-INSTALL.md         # Diese Anleitung  
+hgt2png.c          # Main program
+INSTALL.md         # This guide  
 ```
 
-### **Vollständig (empfohlen):**
+### **Complete (recommended):**
 ```
-hgt2png.c          # Hauptprogramm
-Makefile           # Build-System
+hgt2png.c          # Main program
+Makefile           # Build system
 INSTALL.md         # Installation
-Options.md         # Detaillierte Dokumentation
-README.md          # Projekt-Übersicht
-LICENSE            # Lizenz-Information
+Options.md         # Detailed documentation
+README.md          # Project overview
+LICENSE            # License information
 ```
 
-### **Binary-Distribution:**
+### **Binary Distribution:**
 ```bash
-# Static Build für Portabilität
+# Static build for portability
 gcc -static -std=gnu99 -O3 hgt2png.c -o hgt2png \
     -lpng -lz -lm -pthread -fopenmp
 
-# Package erstellen
+# Create package
 tar -czf hgt2png-linux-x64.tar.gz hgt2png Options.md INSTALL.md
 ```
 
-## Verifikation der Installation
+## Installation Verification
 
 ```bash
-# Version prüfen
+# Check version
 ./hgt2png --version
 
-# Hilfe anzeigen  
+# Show help  
 ./hgt2png --help
 
-# Schneller Test (wenn HGT-Datei vorhanden)
+# Quick test (if HGT file available)
 ./hgt2png --scale-factor 1 --disable-detail --quiet test.hgt
 
-# Performance-Test
+# Performance test
 time ./hgt2png -s 2 terrain.hgt
 ```
 
 ## Support & Debugging
 
-### **Debug-Build erstellen:**
+### **Create Debug Build:**
 ```bash
 gcc -g -DDEBUG -std=gnu99 hgt2png.c -o hgt2png-debug \
     $(pkg-config --cflags --libs libpng) -lm -pthread
 
-# Mit Valgrind testen
+# Test with Valgrind
 valgrind --leak-check=full ./hgt2png-debug test.hgt
 ```
 
-### **Häufige Issues:**
-1. **Zu wenig RAM:** Verwende `--scale-factor 1` für große Dateien
-2. **Alte CPU:** Kompiliere ohne `-mavx2` 
-3. **Fehlende Libraries:** Nutze `make check-deps`
-4. **Permission Errors:** Überprüfe Schreibrechte im Ausgabeverzeichnis
+### **Common Issues:**
+1. **Not enough RAM:** Use `--scale-factor 1` for large files
+2. **Old CPU:** Compile without `-mavx2` 
+3. **Missing Libraries:** Use `make check-deps`
+4. **Permission Errors:** Check write permissions in output directory
 
 ---
 
-**Bei Problemen:** Erstelle ein Issue mit Compiler-Version, OS-Info und Fehlermeldung.
+**For issues:** Create an issue with compiler version, OS info and error message.

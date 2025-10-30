@@ -39,10 +39,10 @@
  **********************************************************************************
 */
 
-#define _POSIX_C_SOURCE 200112L  // Für aligned_alloc
+#define _POSIX_C_SOURCE 200112L  // For aligned_alloc
 #include <stddef.h>
 #include <stdlib.h>
-#include <stdint.h>  // Für SIZE_MAX und explizite Integertypen
+#include <stdint.h>  // For SIZE_MAX and explicit integer types
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -50,9 +50,9 @@
 #include <math.h>
 #include <getopt.h>
 #ifdef _OPENMP
-#include <omp.h>     // OpenMP für SIMD-Vektorisierung und Parallelisierung
+#include <omp.h>     // OpenMP for SIMD vectorization and parallelization
 #endif
-#include <arpa/inet.h>  // Für ntohs/htons (network byte order)
+#include <arpa/inet.h>  // For ntohs/htons (network byte order)
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -64,10 +64,10 @@
 #define _MAX_FILES   255
 #define _MAX_HEIGHT 6000
 
-// Neue Konstanten für Procedural Detail Generation
+// New constants for Procedural Detail Generation
 #define ENABLE_PROCEDURAL_DETAIL 1
 
-// Parameter-Struktur für Kommandozeilen-Optionen
+// Parameter structure for command line options
 typedef enum {
   CURVE_LINEAR = 0,
   CURVE_LOG = 1
@@ -87,28 +87,28 @@ typedef struct {
   int verbose;
   int showHelp;
   int showVersion;
-  int numThreads;                 // Option für Thread-Anzahl
-  int output16bit;                // Option für 16-Bit PNG Output
-  float gamma;                    // Gamma-Korrektur (Standard: 1.0)
-  CurveType curveType;            // Kurventyp (linear/log)
-  int minHeight;                  // Minimale Höhe für Mapping (-1 = Auto)
-  int maxHeight;                  // Maximale Höhe für Mapping (-1 = Auto)
-  MetadataFormat metadataFormat;  // Metadata-Format (none/json/txt)
-  int alphaNoData;                // Option für transparente NoData-Pixel
+  int numThreads;                 // Option for thread count
+  int output16bit;                // Option for 16-bit PNG output
+  float gamma;                    // Gamma correction (default: 1.0)
+  CurveType curveType;            // Curve type (linear/log)
+  int minHeight;                  // Minimum height for mapping (-1 = Auto)
+  int maxHeight;                  // Maximum height for mapping (-1 = Auto)
+  MetadataFormat metadataFormat;  // Metadata format (none/json/txt)
+  int alphaNoData;                // Option for transparent NoData pixels
 } ProgramOptions;
 
-// Threading-Strukturen für Parallelisierung
+// Threading structures for parallelization
 typedef struct {
   int fileIndex;
-  struct tag_FileInfoHGT* fileInfo;  // Verwende den vollständigen Strukturnamen
+  struct tag_FileInfoHGT* fileInfo;  // Use full structure name
   ProgramOptions* opts;
   int* globalResult;                 // Shared result status
-  pthread_mutex_t* outputMutex;      // Mutex für thread-sichere Ausgabe
-  int* filesProcessed;               // Shared counter für Fortschrittsanzeige
-  int totalFiles;                    // Gesamtanzahl Dateien
+  pthread_mutex_t* outputMutex;      // Mutex for thread-safe output
+  int* filesProcessed;               // Shared counter for progress indication
+  int totalFiles;                    // Total number of files
 } ThreadData;
 
-// Standard-Werte
+// Default values
 #define DEFAULT_SCALE_FACTOR 3
 #define DEFAULT_DETAIL_INTENSITY 15.0f
 #define DEFAULT_NOISE_SEED 12345
@@ -138,11 +138,11 @@ typedef struct tag_FileInfoHGT {
   char szFilename[_MAX_PATH];
   size_t iWidth;
   size_t iHeight;
-  int16_t iMinElevation;    // Explizit signed 16-bit für Höhenwerte
-  int16_t iMaxElevation;    // Explizit signed 16-bit für Höhenwerte
+  int16_t iMinElevation;    // Explicitly signed 16-bit for elevation values
+  int16_t iMaxElevation;    // Explicitly signed 16-bit for elevation values
   size_t ulFilesize;
-  int hgtType;              // Pro-Datei HGT-Typ statt globaler Variable
-  int noDataCount;          // Anzahl NoData-Pixel für Statistik
+  int hgtType;              // Per-file HGT type instead of global variable
+  int noDataCount;          // Number of NoData pixels for statistics
 } FileInfo, *pFileInfo;
 
 FileInfo *fi;
@@ -154,55 +154,55 @@ static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iH
 static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, const uint16_t* pixelData);
 static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA16* pixelData);
 
-// Parameter-Management Funktionen
+// Parameter management functions
 static void initDefaultOptions(ProgramOptions *opts);
 static void showHelp(const char *programName);
 static void showVersion(void);
 static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile);
 
-// Sichere Multiplikation mit Überlaufdetektion
+// Safe multiplication with overflow detection
 static int safe_multiply_size_t(size_t a, size_t b, size_t* result) {
     if (a == 0 || b == 0) {
         *result = 0;
         return 1;
     }
     
-    // Überlaufcheck: wenn a * b > SIZE_MAX, dann a > SIZE_MAX / b
+    // Overflow check: if a * b > SIZE_MAX, then a > SIZE_MAX / b
     if (a > SIZE_MAX / b) {
-        return 0; // Überlauf erkannt
+        return 0; // Overflow detected
     }
     
     *result = a * b;
-    return 1; // Erfolg
+    return 1; // Success
 }
 
-// Sichere malloc mit Überlaufschutz
+// Safe malloc with overflow protection
 static void* safe_malloc_pixels(size_t width, size_t height, size_t element_size) {
     size_t pixel_count;
     size_t total_bytes;
     
-    // Erst width * height berechnen
+    // First calculate width * height
     if (!safe_multiply_size_t(width, height, &pixel_count)) {
-        fprintf(stderr, "Fehler: Pixelanzahl-Überlauf bei %zu x %zu\n", width, height);
+        fprintf(stderr, "Error: Pixel count overflow at %zu x %zu\n", width, height);
         return NULL;
     }
     
-    // Dann pixel_count * element_size
+    // Then pixel_count * element_size
     if (!safe_multiply_size_t(pixel_count, element_size, &total_bytes)) {
-        fprintf(stderr, "Fehler: Speichergröße-Überlauf bei %zu Pixeln × %zu Bytes\n", 
+        fprintf(stderr, "Error: Memory size overflow at %zu pixels × %zu bytes\n", 
                 pixel_count, element_size);
         return NULL;
     }
     
-    // Optimiertes Memory-Alignment für SIMD-Vektorisierung
-    // 32-Byte-Alignment für AVX2 (8 float-Werte parallel)
+    // Optimized memory alignment for SIMD vectorization
+    // 32-byte alignment for AVX2 (8 float values in parallel)
     #ifdef _OPENMP
-    const size_t alignment = 32;  // AVX2-optimiert
+    const size_t alignment = 32;  // AVX2-optimized
     size_t aligned_bytes = (total_bytes + alignment - 1) & ~(alignment - 1);
     
     void* ptr = NULL;
     if (posix_memalign(&ptr, alignment, aligned_bytes) != 0) {
-        // Fallback auf normales malloc wenn posix_memalign fehlschlägt
+        // Fallback to normal malloc if posix_memalign fails
         ptr = malloc(total_bytes);
     }
     #else
@@ -210,14 +210,14 @@ static void* safe_malloc_pixels(size_t width, size_t height, size_t element_size
     #endif
     
     if (!ptr) {
-        fprintf(stderr, "Fehler: malloc fehlgeschlagen für %zu Bytes (%zu×%zu×%zu)\n", 
+        fprintf(stderr, "Error: malloc failed for %zu bytes (%zu×%zu×%zu)\n", 
                 total_bytes, width, height, element_size);
     }
     
     return ptr;
 }
 
-// Neue Funktionen für Procedural Detail Generation
+// New functions for Procedural Detail Generation
 static float SimpleNoise(int x, int y, int seed);
 static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
 static short int BilinearInterpolate(const short int* data, int width, int height, float x, float y);
@@ -231,15 +231,15 @@ static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opt
 static short int* AddProceduralDetail(const short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType);
 
-// Funktionen für Parallelisierung
+// Functions for parallelization
 static void* processFileWorker(void* arg);
 static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
 static int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts);
 
-// Hilfsfunktion: Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
+// Helper function: Extracts filename from path and generates PNG name in current directory
 static void generateOutputFilename(const char* inputPath, char* outputPath);
 
-// NoData-Behandlung
+// NoData handling
 static int isNoDataValue(int16_t value, int hgtType);
 static int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount);
 
@@ -249,9 +249,9 @@ const int HGT_TYPE_UNKNOWN = -1;
 const size_t HGT_TYPE_30_SIZE = 1201 * 1201 * sizeof(int16_t);
 const size_t HGT_TYPE_90_SIZE = 3601 * 3601 * sizeof(int16_t);
 
-// NoData Konstanten (SRTM Standard) - Big Endian Format
+// NoData constants (SRTM standard) - Big Endian format
 const int16_t NODATA_VALUE_BE = (int16_t)0x8000;  // Big Endian: -32768
-const int16_t NODATA_REPLACEMENT = 0;             // Ersatzwert für NoData
+const int16_t NODATA_REPLACEMENT = 0;             // Replacement value for NoData
 
 char OutputHeightmapFile[_MAX_PATH];
 
@@ -275,22 +275,22 @@ int main(int argc, char *argv[])
   int iNumIntRead;
   int iNumFilesToConvert = 0;
 
-  // Initialisiere Standard-Optionen
+  // Initialize default options
   initDefaultOptions(&opts);
 
-  // Parse Kommandozeilen-Argumente
+  // Parse command line arguments
   int parseResult = parseArguments(argc, argv, &opts, &inputFile);
   if (parseResult != 0) {
     return parseResult;
   }
 
-  // Zeige Version falls angefordert
+  // Show version if requested
   if (opts.showVersion) {
     showVersion();
     return 0;
   }
 
-  // Zeige Hilfe falls angefordert oder keine Input-Datei
+  // Show help if requested or no input file
   if (opts.showHelp || inputFile == NULL) {
     showHelp(argv[0]);
     return opts.showHelp ? 0 : 1;
@@ -330,19 +330,19 @@ int main(int argc, char *argv[])
     {
       if (fgets(sBuffer, sizeof(sBuffer), FileList) != NULL)
       {
-        // Entferne Newline und prüfe auf leere Zeilen
+        // Remove newline and check for empty lines
         size_t len = strlen(sBuffer);
         if (len > 0 && sBuffer[len - 1] == '\n') {
           sBuffer[len - 1] = '\0';
           len--;
         }
         
-        // Überspringe leere Zeilen
+        // Skip empty lines
         if (len > 0) {
           sCurrentFilename[f] = (char *) malloc(len + 1);
           if (sCurrentFilename[f] == NULL) {
             fprintf(stderr, "Error: Can't allocate memory for filename %d\n", f);
-            // Cleanup bereits allokierter Filenames
+            // Cleanup already allocated filenames
             for (int cleanup = 0; cleanup < f; cleanup++) {
               free(sCurrentFilename[cleanup]);
               sCurrentFilename[cleanup] = NULL;
@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
   if ((fi = (FileInfo *) malloc(iNumFilesToConvert * sizeof(struct tag_FileInfoHGT))) == NULL)
   {
     fprintf(stderr, "Error: Can't allocate FileInfo array\n");
-    // Cleanup bereits allokierter Filenames
+    // Cleanup already allocated filenames
     for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
       if (sCurrentFilename[cleanup] != NULL) {
         free(sCurrentFilename[cleanup]);
@@ -422,19 +422,19 @@ int main(int argc, char *argv[])
       fi[i].iHeight = 1201;
     } else if (fi[i].ulFilesize == HGT_TYPE_90_SIZE)
     {
-      fi[i].hgtType = HGT_TYPE_90;  // Pro-Datei statt global
+      fi[i].hgtType = HGT_TYPE_90;  // Per-file instead of global
       fi[i].iWidth = 3601;
       fi[i].iHeight = 3601;
     }
     else
     {
-      // Custom-Size-Parsing über Dateiname mit Fallback
+      // Custom size parsing via filename with fallback
       fi[i].iWidth = 0;
       fi[i].iHeight = 0;
       
-      // Sicheres Parsing nur bei ausreichend langer Dateiname
+      // Safe parsing only for sufficiently long filename
       size_t nameLen = strlen(fi[i].szFilename);
-      if (nameLen >= 15) {  // Mindestens "N00E000_1234x5678.hgt"
+      if (nameLen >= 15) {  // At least "N00E000_1234x5678.hgt"
         memcpy(sTmp, &sCurrentFilename[i][5], 4);
         sTmp[4] = '\0';
         int parsedWidth = atoi(sTmp);
@@ -443,7 +443,7 @@ int main(int argc, char *argv[])
         sTmp[4] = '\0';
         int parsedHeight = atoi(sTmp);
         
-        // Plausibilitätsprüfung: Dimensionen müssen sinnvoll sein
+        // Plausibility check: dimensions must be reasonable
         if (parsedWidth > 0 && parsedWidth <= 65536 && 
             parsedHeight > 0 && parsedHeight <= 65536) {
           fi[i].iWidth = parsedWidth;
@@ -452,29 +452,29 @@ int main(int argc, char *argv[])
         }
       }
       
-      // Fallback: Bei ungültigem Parsing als UNKNOWN markieren
+      // Fallback: Mark as UNKNOWN for invalid parsing
       if (fi[i].iWidth == 0 || fi[i].iHeight == 0) {
         fi[i].hgtType = HGT_TYPE_UNKNOWN;
         if (opts.verbose) {
           fprintf(stderr, "WARNING: Could not parse dimensions from filename %s\n", fi[i].szFilename);
         }
       } else {
-        // Zusätzliche Validation: Dateigröße muss mit Dimensionen übereinstimmen (überlaufgeschützt)
+        // Additional validation: file size must match dimensions (overflow-protected)
         size_t expectedPixels, expectedSize;
         if (!safe_multiply_size_t(fi[i].iWidth, fi[i].iHeight, &expectedPixels) ||
             !safe_multiply_size_t(expectedPixels, 2, &expectedSize)) {
           fprintf(stderr, "ERROR: Dimension overflow for %s: %zu×%zu pixels\n", 
                   fi[i].szFilename, fi[i].iWidth, fi[i].iHeight);
-          fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Als ungültig markieren
+          fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Mark as invalid
         } else if (fi[i].ulFilesize != expectedSize) {
           fprintf(stderr, "ERROR: Filesize mismatch for %s: expected %zu bytes (%zu×%zu), got %zu bytes\n", 
                   fi[i].szFilename, expectedSize, fi[i].iWidth, fi[i].iHeight, fi[i].ulFilesize);
-          fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Als ungültig markieren
+          fi[i].hgtType = HGT_TYPE_UNKNOWN;  // Mark as invalid
         }
       }
     }
 
-    if (fi[i].hgtType == HGT_TYPE_UNKNOWN) {  // Pro-Datei Überprüfung
+    if (fi[i].hgtType == HGT_TYPE_UNKNOWN) {  // Per-file check
       fprintf(stderr, "Error: %s has an unknown HGT type\n", fi[i].szFilename);
       fclose(InFile);
       // Cleanup allocated memory
@@ -525,14 +525,14 @@ int main(int argc, char *argv[])
 
     iCurrentMaxElevation = 0;
     iCurrentMinElevation = 9999;
-    fi[i].noDataCount = 0;  // Initialisiere NoData-Zähler
+    fi[i].noDataCount = 0;  // Initialize NoData counter
     
     for (unsigned long j = 0; j < fi[i].ulFilesize / 2; j++)
     {
-      // NoData-Behandlung
+      // NoData handling
       iElevationData[j] = processElevationValue(iElevationData[j], fi[i].hgtType, &fi[i].noDataCount);
       
-      // Min/Max nur für gültige Werte (nicht für NoData-Ersatzwerte)
+      // Min/Max only for valid values (not for NoData replacement values)
       if (iElevationData[j] != NODATA_REPLACEMENT) {
         if (iElevationData[j] < iCurrentMinElevation) iCurrentMinElevation = iElevationData[j];
         if (iElevationData[j] > iCurrentMaxElevation) iCurrentMaxElevation = iElevationData[j];
@@ -542,7 +542,7 @@ int main(int argc, char *argv[])
     if (iCurrentMinElevation < iOverallMinElevation) iOverallMinElevation = iCurrentMinElevation;
     if (iCurrentMaxElevation > iOverallMaxElevation) iOverallMaxElevation = iCurrentMaxElevation;
     
-    // NoData-Statistik ausgeben - Division durch 0 vermeiden
+    // Output NoData statistics - avoid division by 0
     if (fi[i].noDataCount > 0) {
         unsigned long totalPixels = fi[i].ulFilesize / 2;
         float noDataPercent = 0.0f;
@@ -560,11 +560,11 @@ int main(int argc, char *argv[])
     fclose(InFile);
   }
 
-  // PARALLELISIERTE BATCH-VERARBEITUNG
+  // PARALLELIZED BATCH PROCESSING
   int processingResult = processFilesParallel(fi, iNumFilesToConvert, opts);
   
   if (processingResult != 0) {
-    // Cleanup bei Fehler
+    // Cleanup on error
     for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++) {
       if (sCurrentFilename[cleanup] != NULL) {
         free(sCurrentFilename[cleanup]);
@@ -675,7 +675,7 @@ static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_
   png_image_free(&image);
 }
 
-// PARALLELISIERUNG - Worker-Thread Funktion
+// PARALLELIZATION - Worker thread function
 static void* processFileWorker(void* arg) {
     ThreadData* data = (ThreadData*)arg;
     struct tag_FileInfoHGT* fi = &data->fileInfo[data->fileIndex];
@@ -684,11 +684,11 @@ static void* processFileWorker(void* arg) {
     FILE* InFile = NULL;
     short* iElevationData = NULL;
     RGB* PixelData = NULL;
-    RGBA* PixelDataRGBA = NULL;  // Neue RGBA-Daten für Alpha-Support
+    RGBA* PixelDataRGBA = NULL;  // New RGBA data for alpha support
     int iNumIntRead;
     char OutputHeightmapFile[256];
     
-    // Thread-sichere Fortschrittsanzeige
+    // Thread-safe progress indication
     pthread_mutex_lock(data->outputMutex);
     if (opts->verbose) {
         fprintf(stderr, "INFO: Processing file %d/%d: %s\n", 
@@ -696,26 +696,26 @@ static void* processFileWorker(void* arg) {
     }
     pthread_mutex_unlock(data->outputMutex);
     
-    // Datei öffnen
+    // Open file
     if ((InFile = fopen(fi->szFilename, "rb")) == NULL) {
         pthread_mutex_lock(data->outputMutex);
         fprintf(stderr, "Error: Can't open input file %s\n", fi->szFilename);
         pthread_mutex_unlock(data->outputMutex);
         *(data->globalResult) = 1;
-        return NULL; // Kein Speicher zu leaken hier
+        return NULL; // No memory to leak here
     }
 
-    // Speicher für Elevation Data allokieren
+    // Allocate memory for elevation data
     if ((iElevationData = (short*)malloc(fi->ulFilesize)) == NULL) {
         pthread_mutex_lock(data->outputMutex);
         fprintf(stderr, "Error: Can't allocate elevation data block %s\n", fi->szFilename);
         pthread_mutex_unlock(data->outputMutex);
         fclose(InFile);
         *(data->globalResult) = 1;
-        return NULL; // File wurde geschlossen, kein Speicher allokiert
+        return NULL; // File was closed, no memory allocated
     }
 
-    // Elevation Data lesen
+    // Read elevation data
     if ((iNumIntRead = fread(iElevationData, 1, fi->ulFilesize, InFile)) != (int)fi->ulFilesize) {
         pthread_mutex_lock(data->outputMutex);
         fprintf(stderr, "Error: Can't load elevation data from %s\n", fi->szFilename);
@@ -730,13 +730,13 @@ static void* processFileWorker(void* arg) {
 
     // PROCEDURAL DETAIL GENERATION
     if (opts->enableDetail) {
-        // NoData-Behandlung für Worker-Thread
+        // NoData handling for worker thread
         int threadNoDataCount = 0;
         for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++) {
             iElevationData[pre] = processElevationValue(iElevationData[pre], fi->hgtType, &threadNoDataCount);
         }
         
-        // NoData-Statistik thread-safe aktualisieren
+        // Update NoData statistics thread-safely
         pthread_mutex_lock(data->outputMutex);
         fi->noDataCount += threadNoDataCount;
         if (opts->verbose && threadNoDataCount > 0) {
@@ -744,7 +744,7 @@ static void* processFileWorker(void* arg) {
         }
         pthread_mutex_unlock(data->outputMutex);
         
-        // Procedural Detail hinzufügen
+        // Add procedural detail
         short int* detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight, 
                                                      opts->scaleFactor, opts->detailIntensity, opts->noiseSeed, fi->hgtType);
         
@@ -754,12 +754,12 @@ static void* processFileWorker(void* arg) {
             fi->iWidth *= opts->scaleFactor;
             fi->iHeight *= opts->scaleFactor;
             
-            // Sichere Berechnung der neuen Dateigröße
+            // Safe calculation of new file size
             size_t newPixels, newFilesize;
             if (!safe_multiply_size_t(fi->iWidth, fi->iHeight, &newPixels) ||
                 !safe_multiply_size_t(newPixels, sizeof(short int), &newFilesize)) {
                 pthread_mutex_lock(data->outputMutex);
-                fprintf(stderr, "FEHLER: Dateigröße-Überlauf nach Enhancement: %zu×%zu für %s\n", 
+                fprintf(stderr, "ERROR: File size overflow after enhancement: %zu×%zu for %s\n", 
                         fi->iWidth, fi->iHeight, fi->szFilename);
                 pthread_mutex_unlock(data->outputMutex);
                 free(iElevationData);
@@ -783,11 +783,11 @@ static void* processFileWorker(void* arg) {
         }
     }
 
-    // Speicher für Pixel Data allokieren - abhängig vom Output-Format
+    // Allocate memory for pixel data - depending on output format
     size_t pixelCount;
     if (!safe_multiply_size_t(fi->iWidth, fi->iHeight, &pixelCount)) {
         pthread_mutex_lock(data->outputMutex);
-        fprintf(stderr, "Fehler: Pixelanzahl-Überlauf bei %zu×%zu für %s\n", 
+        fprintf(stderr, "Error: Pixel count overflow at %zu×%zu for %s\n", 
                 fi->iWidth, fi->iHeight, fi->szFilename);
         pthread_mutex_unlock(data->outputMutex);
         free(iElevationData);
@@ -800,7 +800,7 @@ static void* processFileWorker(void* arg) {
     RGBA16* PixelData16Alpha = NULL;
     
     if (opts->output16bit && opts->alphaNoData) {
-        // 16-Bit Grayscale + Alpha für transparente NoData
+        // 16-bit grayscale + alpha for transparent NoData
         PixelData16Alpha = (RGBA16*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(RGBA16));
         if (PixelData16Alpha == NULL) {
             pthread_mutex_lock(data->outputMutex);
@@ -813,7 +813,7 @@ static void* processFileWorker(void* arg) {
             return NULL;
         }
     } else if (opts->output16bit) {
-        // 16-Bit Grayscale-Daten mit überlaufgeschützter Allokation
+        // 16-bit grayscale data with overflow-protected allocation
         PixelData16 = (unsigned short*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(unsigned short));
         if (PixelData16 == NULL) {
             pthread_mutex_lock(data->outputMutex);
@@ -826,7 +826,7 @@ static void* processFileWorker(void* arg) {
             return NULL;
         }
     } else if (opts->alphaNoData) {
-        // 8-Bit RGBA-Daten für Alpha-Support mit überlaufgeschützter Allokation
+        // 8-bit RGBA data for alpha support with overflow-protected allocation
         PixelDataRGBA = (RGBA*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(struct tag_RGBA));
         if (PixelDataRGBA == NULL) {
             pthread_mutex_lock(data->outputMutex);
@@ -839,7 +839,7 @@ static void* processFileWorker(void* arg) {
             return NULL;
         }
     } else {
-        // 8-Bit RGB-Daten mit überlaufgeschützter Allokation  
+        // 8-bit RGB data with overflow-protected allocation  
         PixelData = (RGB*)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(struct tag_RGB));
         if (PixelData == NULL) {
             pthread_mutex_lock(data->outputMutex);
@@ -853,35 +853,35 @@ static void* processFileWorker(void* arg) {
         }
     }
     
-    // Effektive Min/Max-Höhen berechnen (Custom Range oder Auto-Detection)
+    // Calculate effective min/max heights (custom range or auto-detection)
     int effectiveMinHeight = (opts->minHeight != -1) ? opts->minHeight : iOverallMinElevation;
     int effectiveMaxHeight = (opts->maxHeight != -1) ? opts->maxHeight : iOverallMaxElevation;
     
-    // Sicherheitscheck: Min < Max
+    // Safety check: Min < Max
     if (effectiveMinHeight >= effectiveMaxHeight) {
         effectiveMinHeight = iOverallMinElevation;
         effectiveMaxHeight = iOverallMaxElevation;
     }
      
-    // Elevation zu Pixel konvertieren - abhängig vom Output-Format
-    // OpenMP: SIMD-Vektorisierung für optimale Performance bei großen Bildern
-    int totalNoDataCount = 0;  // Thread-safe aggregation für NoData-Zählung
+    // Convert elevation to pixels - depending on output format
+    // OpenMP: SIMD vectorization for optimal performance with large images
+    int totalNoDataCount = 0;  // Thread-safe aggregation for NoData counting
     #pragma omp parallel for simd aligned(iElevationData:32) reduction(+:totalNoDataCount) if(pixelCount > 10000)
     for (unsigned long m = 0; m < pixelCount; m++) {
         if (!opts->enableDetail) {
-            // Korrekte NoData-Behandlung ohne Detail-Generation
+            // Correct NoData handling without detail generation
             int threadNoDataCount = 0;
             iElevationData[m] = processElevationValue(iElevationData[m], fi->hgtType, &threadNoDataCount);
-            totalNoDataCount += threadNoDataCount;  // Thread-safe Reduction
+            totalNoDataCount += threadNoDataCount;  // Thread-safe reduction
         }
 
-        // Prüfe auf NoData-Pixel (für Alpha-Transparenz)
+        // Check for NoData pixels (for alpha transparency)
         int isNoDataPixel = (iElevationData[m] == NODATA_REPLACEMENT);
         
-        // Normalisierung auf 0.0-1.0 mit Custom-Range
+        // Normalization to 0.0-1.0 with custom range
         float normalizedValue = 0.5f;  // Fallback
         if (effectiveMaxHeight > effectiveMinHeight) {
-            // Clamp elevation zu effektivem Range
+            // Clamp elevation to effective range
             int clampedElevation = iElevationData[m];
             if (clampedElevation < effectiveMinHeight) clampedElevation = effectiveMinHeight;
             if (clampedElevation > effectiveMaxHeight) clampedElevation = effectiveMaxHeight;
@@ -890,38 +890,38 @@ static void* processFileWorker(void* arg) {
                               (float)(effectiveMaxHeight - effectiveMinHeight);
         }
         
-        // Kurven-Mapping anwenden
+        // Apply curve mapping
         float curvedValue = ApplyCurveMapping(normalizedValue, opts->curveType, opts->gamma);
         
         if (opts->output16bit && opts->alphaNoData) {
-            // 16-Bit Grayscale + Alpha: NoData-Pixel transparent machen
+            // 16-bit grayscale + alpha: make NoData pixels transparent
             uint16_t pixelValue = (uint16_t)(curvedValue * 65535.0f);
             PixelData16Alpha[m].y = pixelValue;
-            PixelData16Alpha[m].a = isNoDataPixel ? 0 : 65535;  // Transparent für NoData, opaque für gültige Daten
+            PixelData16Alpha[m].a = isNoDataPixel ? 0 : 65535;  // Transparent for NoData, opaque for valid data
         } else if (opts->output16bit) {
-            // 16-Bit Grayscale: Volle 16-Bit-Range nutzen (0-65535)
+            // 16-bit grayscale: use full 16-bit range (0-65535)
             PixelData16[m] = (unsigned short)(curvedValue * 65535.0f);
         } else if (opts->alphaNoData) {
-            // 8-Bit RGBA: Mit Alpha-Kanal für NoData-Transparenz
+            // 8-bit RGBA: with alpha channel for NoData transparency
             unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
             PixelDataRGBA[m].r = pixelValue;
             PixelDataRGBA[m].g = pixelValue;
             PixelDataRGBA[m].b = pixelValue;
-            PixelDataRGBA[m].a = isNoDataPixel ? 0 : 255;  // Transparent für NoData, opaque für gültige Daten
+            PixelDataRGBA[m].a = isNoDataPixel ? 0 : 255;  // Transparent for NoData, opaque for valid data
         } else {
-            // 8-Bit RGB: Kurven-korrigierte Berechnung
+            // 8-bit RGB: curve-corrected calculation
             unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
             PixelData[m].r = PixelData[m].g = PixelData[m].b = pixelValue;
         }
     }
     
-    // NoData-Zählung nach paralleler Verarbeitung aktualisieren
+    // Update NoData count after parallel processing
     fi->noDataCount += totalNoDataCount;
 
-    // PNG Output-Dateiname generieren (nur Dateiname, nicht kompletter Pfad)
+    // Generate PNG output filename (filename only, not full path)
     generateOutputFilename(fi->szFilename, OutputHeightmapFile);
     
-    // PNG schreiben (thread-safe mit lokalen PixelData)
+    // Write PNG (thread-safe with local PixelData)
     pthread_mutex_lock(data->outputMutex);
     if (opts->output16bit && opts->alphaNoData) {
         WritePNG16BitWithAlpha(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16Alpha);
@@ -933,12 +933,12 @@ static void* processFileWorker(void* arg) {
         WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
     }
     
-    // Metadata-Datei schreiben (falls aktiviert)
+    // Write metadata file (if enabled)
     writeMetadataFile(OutputHeightmapFile, opts, fi, effectiveMinHeight, effectiveMaxHeight);
     
     pthread_mutex_unlock(data->outputMutex);
 
-    // Cleanup für diesen Thread
+    // Cleanup for this thread
     free(iElevationData);
     iElevationData = NULL;
     if (opts->output16bit && opts->alphaNoData) {
@@ -948,14 +948,14 @@ static void* processFileWorker(void* arg) {
         free(PixelData16);
         PixelData16 = NULL;
     } else if (opts->alphaNoData) {
-        free(PixelDataRGBA);  // Thread-lokale RGBA-Daten freigeben
+        free(PixelDataRGBA);  // Free thread-local RGBA data
         PixelDataRGBA = NULL;
     } else {
-        free(PixelData);  // Thread-lokale PixelData freigeben
+        free(PixelData);  // Free thread-local PixelData
         PixelData = NULL;
     }
     
-    // Fortschrittszähler aktualisieren
+    // Update progress counter
     pthread_mutex_lock(data->outputMutex);
     (*(data->filesProcessed))++;
     if (opts->verbose) {
@@ -966,10 +966,10 @@ static void* processFileWorker(void* arg) {
     return NULL;
 }
 
-// PARALLELISIERTE BATCH-VERARBEITUNG
+// PARALLELIZED BATCH PROCESSING
 static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
     if (iNumFilesToConvert <= 1 || opts.numThreads <= 1) {
-        // Fallback auf sequentielle Verarbeitung bei wenigen Dateien oder 1 Thread
+        // Fallback to sequential processing for few files or 1 thread
         return processFilesSequential(fi, iNumFilesToConvert, opts);
     }
     
@@ -979,7 +979,7 @@ static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConve
     int globalResult = 0;
     int filesProcessed = 0;
     
-    // Anzahl Threads an verfügbare Dateien anpassen
+    // Adapt number of threads to available files
     int actualThreads = (opts.numThreads > iNumFilesToConvert) ? iNumFilesToConvert : opts.numThreads;
     
     if (opts.verbose) {
@@ -987,7 +987,7 @@ static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConve
                 actualThreads, iNumFilesToConvert);
     }
     
-    // Thread-Arrays allokieren
+    // Allocate thread arrays
     threads = (pthread_t*)malloc(actualThreads * sizeof(pthread_t));
     threadData = (ThreadData*)malloc(iNumFilesToConvert * sizeof(ThreadData));
     
@@ -998,7 +998,7 @@ static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConve
         return 1;
     }
     
-    // Thread-Daten für alle Dateien vorbereiten
+    // Prepare thread data for all files
     for (int i = 0; i < iNumFilesToConvert; i++) {
         threadData[i].fileIndex = i;
         threadData[i].fileInfo = fi;
@@ -1009,13 +1009,13 @@ static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConve
         threadData[i].totalFiles = iNumFilesToConvert;
     }
     
-    // Threads in Batches starten (Thread-Pool Simulation)
+    // Start threads in batches (thread pool simulation)
     int fileIndex = 0;
     while (fileIndex < iNumFilesToConvert && globalResult == 0) {
         int threadsToStart = (iNumFilesToConvert - fileIndex > actualThreads) ? 
                               actualThreads : (iNumFilesToConvert - fileIndex);
         
-        // Threads starten
+        // Start threads
         for (int t = 0; t < threadsToStart; t++) {
             if (pthread_create(&threads[t], NULL, processFileWorker, &threadData[fileIndex + t]) != 0) {
                 fprintf(stderr, "Error: Cannot create thread %d\n", t);
@@ -1024,7 +1024,7 @@ static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConve
             }
         }
         
-        // Auf alle gestarteten Threads warten
+        // Wait for all started threads
         for (int t = 0; t < threadsToStart; t++) {
             pthread_join(threads[t], NULL);
         }
@@ -1045,15 +1045,15 @@ static int processFilesParallel(struct tag_FileInfoHGT* fi, int iNumFilesToConve
     return globalResult;
 }
 
-// SEQUENTIELLE VERARBEITUNG (Fallback)
+// SEQUENTIAL PROCESSING (Fallback)
 static int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToConvert, ProgramOptions opts) {
     if (opts.verbose) {
         fprintf(stderr, "INFO: Using sequential processing for %d files\n", iNumFilesToConvert);
     }
     
-    // Die ursprüngliche Schleife als separate Funktion
+    // The original loop as a separate function
     for (int k = 0; k < iNumFilesToConvert; k++) {
-        // Verwende die Worker-Logik, aber ohne Threading
+        // Use worker logic, but without threading
         ThreadData data;
         data.fileIndex = k;
         data.fileInfo = fi;
@@ -1080,14 +1080,14 @@ static int processFilesSequential(struct tag_FileInfoHGT* fi, int iNumFilesToCon
 
 // PROCEDURAL DETAIL GENERATION
 
-// Simple Noise-Funktion (Perlin-ähnlich)
+// Simple noise function (Perlin-like)
 static float SimpleNoise(int x, int y, int seed) {
     int n = x + y * 57 + seed * 131;
     n = (n << 13) ^ n;
     return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
 }
 
-// Bilineare Interpolation für Noise-Sampling (eliminiert Quantisierung)
+// Bilinear interpolation for noise sampling (eliminates quantization)
 static float BilinearNoiseInterpolate(float x, float y, int seed) {
     int x0 = (int)floorf(x);
     int y0 = (int)floorf(y);
@@ -1105,7 +1105,7 @@ static float BilinearNoiseInterpolate(float x, float y, int seed) {
     return v0 * (1.0f - fy) + v1 * fy;
 }
 
-// Fraktales Noise für verschiedene Detailgrade (mit Sub-Pixel-Precision)
+// Fractal noise for different detail levels (with sub-pixel precision)
 static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed) {
     float total = 0.0f;
     float frequency = scale;
@@ -1113,7 +1113,7 @@ static float FractalNoise(float x, float y, int octaves, float persistence, floa
     float maxValue = 0.0f;
     
     for (int i = 0; i < octaves; i++) {
-        // Bilineare Interpolation statt Integer-Casting eliminiert Quantisierung
+        // Bilinear interpolation instead of integer casting eliminates quantization
         total += BilinearNoiseInterpolate(x * frequency, y * frequency, seed + i) * amplitude;
         maxValue += amplitude;
         amplitude *= persistence;
@@ -1123,14 +1123,14 @@ static float FractalNoise(float x, float y, int octaves, float persistence, floa
     return total / maxValue;
 }
 
-// Bilineare Interpolation
+// Bilinear interpolation
 static short int BilinearInterpolate(const short int* data, int width, int height, float x, float y) {
     int x1 = (int)x;
     int y1 = (int)y;
     int x2 = x1 + 1;
     int y2 = y1 + 1;
     
-    // Grenzen prüfen
+    // Check boundaries
     if (x2 >= width) x2 = width - 1;
     if (y2 >= height) y2 = height - 1;
     if (x1 < 0) x1 = 0;
@@ -1144,24 +1144,24 @@ static short int BilinearInterpolate(const short int* data, int width, int heigh
     short int p3 = data[y2 * width + x1];  // Bottom-left
     short int p4 = data[y2 * width + x2];  // Bottom-right
     
-    // Interpolation in X-Richtung
+    // Interpolation in X direction
     float i1 = p1 * (1 - fx) + p2 * fx;
     float i2 = p3 * (1 - fx) + p4 * fx;
     
-    // Interpolation in Y-Richtung
+    // Interpolation in Y direction
     return (short int)(i1 * (1 - fy) + i2 * fy);
 }
 
-// Lokale Steigung berechnen
-// Pixelabstand basierend auf HGT-Typ berechnen
+// Calculate local slope
+// Calculate pixel distance based on HGT type
 static float GetPixelDistance(int hgtType) {
     if (hgtType == HGT_TYPE_30) {
-        return 60.0f; // 2 * 30m für SRTM-1 (1201x1201)
+        return 60.0f; // 2 * 30m for SRTM-1 (1201x1201)
     } else if (hgtType == HGT_TYPE_90) {
-        return 180.0f; // 2 * 90m für SRTM-3 (3601x3601)  
+        return 180.0f; // 2 * 90m for SRTM-3 (3601x3601)  
     } else {
-        // Custom-Size: Annahme mittlere Auflösung
-        return 60.0f; // Fallback auf SRTM-1 Auflösung
+        // Custom size: assume medium resolution
+        return 60.0f; // Fallback to SRTM-1 resolution
     }
 }
 
@@ -1180,23 +1180,23 @@ static float CalculateLocalSlope(const short int* data, int width, int height, f
     float dx = (right - left) / pixelDistance;
     float dy = (bottom - top) / pixelDistance;
     
-    float slope = sqrt(dx*dx + dy*dy) / 100.0f; // Normalisiert auf 0-1
+    float slope = sqrt(dx*dx + dy*dy) / 100.0f; // Normalized to 0-1
     if (slope > 1.0f) slope = 1.0f;
     return slope;
 }
 
-// Terrain-typ-spezifische Faktoren
+// Terrain-type-specific factors
 static float GetHeightTypeFactor(short int height) {
-    if (height < 100) return 0.5f;      // Küstenebenen - wenig Detail
-    else if (height < 500) return 0.7f;  // Hügelland - mittleres Detail
-    else if (height < 1500) return 1.0f; // Berge - volles Detail
-    else if (height < 3000) return 0.8f; // Hochgebirge - weniger Detail (Fels)
-    else return 0.3f;                    // Extreme Höhen - minimales Detail
+    if (height < 100) return 0.5f;      // Coastal plains - little detail
+    else if (height < 500) return 0.7f;  // Hills - medium detail
+    else if (height < 1500) return 1.0f; // Mountains - full detail
+    else if (height < 3000) return 0.8f; // High mountains - less detail (rock)
+    else return 0.3f;                    // Extreme heights - minimal detail
 }
 
-// Kurven-Mapping für verschiedene Elevation-zu-Pixel-Transformationen
+// Curve mapping for various elevation-to-pixel transformations
 static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma) {
-    // Eingabe-Clipping
+    // Input clipping
     if (normalizedValue < 0.0f) normalizedValue = 0.0f;
     if (normalizedValue > 1.0f) normalizedValue = 1.0f;
     
@@ -1204,12 +1204,12 @@ static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float
     
     switch (curveType) {
         case CURVE_LINEAR:
-            // Lineare Kurve - keine Änderung
+            // Linear curve - no change
             result = normalizedValue;
             break;
             
         case CURVE_LOG:
-            // Logarithmische Kurve - betont niedrige Werte
+            // Logarithmic curve - emphasizes low values
             if (normalizedValue > 0.0f) {
                 result = logf(1.0f + normalizedValue * 9.0f) / logf(10.0f);  // log10(1 + x*9)
             } else {
@@ -1218,28 +1218,28 @@ static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float
             break;
     }
     
-    // Gamma-Korrektur anwenden
+    // Apply gamma correction
     if (gamma != 1.0f) {
         result = powf(result, 1.0f / gamma);
     }
     
-    // Ausgabe-Clipping
+    // Output clipping
     if (result < 0.0f) result = 0.0f;
     if (result > 1.0f) result = 1.0f;
     
     return result;
 }
 
-// Extrahiert geografische Grenzen aus HGT-Dateinamen (z.B. "N49E004.hgt" -> lat 49-50, lon 4-5)
+// Extracts geographic bounds from HGT filenames (e.g. "N49E004.hgt" -> lat 49-50, lon 4-5)
 static int extractGeoBounds(const char* filename, float* south, float* north, float* west, float* east) {
-    // Extrahiere Dateinamen ohne Pfad
+    // Extract filename without path
     const char* basename = strrchr(filename, '/');
     if (basename) basename++; else basename = filename;
     
-    // Erwarte Format: [N|S]DDEEEE[E|W].hgt (z.B. N49E004.hgt)
+    // Expect format: [N|S]DDEEEE[E|W].hgt (e.g. N49E004.hgt)
     if (strlen(basename) < 7) return 0;
     
-    // Latitude parsen
+    // Parse latitude
     char latHemisphere = basename[0];
     if (latHemisphere != 'N' && latHemisphere != 'S') return 0;
     
@@ -1249,7 +1249,7 @@ static int extractGeoBounds(const char* filename, float* south, float* north, fl
     *south = (latHemisphere == 'N') ? (float)latDegrees : -(float)(latDegrees + 1);
     *north = (latHemisphere == 'N') ? (float)(latDegrees + 1) : -(float)latDegrees;
     
-    // Longitude parsen
+    // Parse longitude
     char lonHemisphere = basename[3];
     if (lonHemisphere != 'E' && lonHemisphere != 'W') return 0;
     
@@ -1262,13 +1262,13 @@ static int extractGeoBounds(const char* filename, float* south, float* north, fl
     return 1;
 }
 
-// Hauptfunktion für Procedural Detail Generation
+// Main function for Procedural Detail Generation
 static short int* AddProceduralDetail(const short int* originalData, int originalWidth, int originalHeight, 
                                int scaleFactor, float detailIntensity, int seed, int hgtType) {
     
     size_t newWidth, newHeight;
     
-    // Sichere Berechnung der neuen Dimensionen mit Überlaufschutz
+    // Safe calculation of new dimensions with overflow protection
     if (!safe_multiply_size_t((size_t)originalWidth, (size_t)scaleFactor, &newWidth) ||
         !safe_multiply_size_t((size_t)originalHeight, (size_t)scaleFactor, &newHeight)) {
         fprintf(stderr, "ERROR: Dimension overflow in procedural detail generation: %d×%d scale %d\n", 
@@ -1276,7 +1276,7 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
         return NULL;
     }
     
-    // Sichere Speicherallokation mit Überlaufschutz
+    // Safe memory allocation with overflow protection
     short int* detailedData = (short int*)safe_malloc_pixels(newWidth, newHeight, sizeof(short int));
     if (!detailedData) {
         fprintf(stderr, "ERROR: Cannot allocate memory for detailed heightmap (%zu×%zu pixels)\n", 
@@ -1287,11 +1287,11 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
     fprintf(stderr, "INFO: Generating %zu×%zu detailed heightmap (intensity: %.1f)\n", 
             newWidth, newHeight, detailIntensity);
     
-    // OpenMP: Parallele Verarbeitung + SIMD-Vektorisierung für optimale Performance
-    // Äußere Schleife parallel auf mehrere CPU-Kerne verteilen
+    // OpenMP: Parallel processing + SIMD vectorization for optimal performance
+    // Distribute outer loop across multiple CPU cores
     #pragma omp parallel for schedule(dynamic, 64) if(newHeight > 1000)
     for (size_t y = 0; y < newHeight; y++) {
-        // Progress-Reporting (thread-safe, reduzierte Frequenz)
+        // Progress reporting (thread-safe, reduced frequency)
         if (y % (newHeight / 10) == 0) {
             #pragma omp critical
             {
@@ -1299,10 +1299,10 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
             }
         }
         
-        // Innere Schleife für SIMD-Vektorisierung optimieren
+        // Optimize inner loop for SIMD vectorization
         #pragma omp simd aligned(detailedData:32) safelen(16)
         for (size_t x = 0; x < newWidth; x++) {
-            // Basis-Höhe durch bilineare Interpolation
+            // Base height through bilinear interpolation
             float srcX = (float)x / scaleFactor;
             float srcY = (float)y / scaleFactor;
             
@@ -1311,32 +1311,32 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
             
             short int baseHeight = BilinearInterpolate(originalData, originalWidth, originalHeight, srcX, srcY);
             
-            // Procedural Detail hinzufügen
-            // Verschiedene Noise-Oktaven für unterschiedliche Detailgrößen
-            float detailNoise1 = FractalNoise(x * 0.005f, y * 0.005f, 3, 0.5f, 1.0f, seed);      // Große Features
-            float detailNoise2 = FractalNoise(x * 0.02f, y * 0.02f, 4, 0.6f, 1.0f, seed + 100);  // Mittlere Features  
-            float detailNoise3 = FractalNoise(x * 0.08f, y * 0.08f, 2, 0.4f, 1.0f, seed + 200);  // Feine Details
+            // Add procedural detail
+            // Different noise octaves for different detail sizes
+            float detailNoise1 = FractalNoise(x * 0.005f, y * 0.005f, 3, 0.5f, 1.0f, seed);      // Large features
+            float detailNoise2 = FractalNoise(x * 0.02f, y * 0.02f, 4, 0.6f, 1.0f, seed + 100);  // Medium features  
+            float detailNoise3 = FractalNoise(x * 0.08f, y * 0.08f, 2, 0.4f, 1.0f, seed + 200);  // Fine details
             
             float combinedNoise = detailNoise1 * 0.5f + detailNoise2 * 0.3f + detailNoise3 * 0.2f;
             
-            // Höhenabhängige Variation (flache Bereiche = weniger Detail, steile = mehr Detail)
+            // Height-dependent variation (flat areas = less detail, steep areas = more detail)
             float localSlope = CalculateLocalSlope(originalData, originalWidth, originalHeight, srcX, srcY, hgtType);
-            float slopeMultiplier = 0.3f + (localSlope * 0.7f); // 0.3 bis 1.0
+            float slopeMultiplier = 0.3f + (localSlope * 0.7f); // 0.3 to 1.0
             
-            // Detail basierend auf Terrain-Typ anpassen
+            // Adjust detail based on terrain type
             float heightFactor = GetHeightTypeFactor(baseHeight);
             
-            // Finales Detail berechnen mit Sub-Pixel-Precision
+            // Calculate final detail with sub-pixel precision
             float detailVariation = combinedNoise * detailIntensity * slopeMultiplier * heightFactor;
             
-            // Float-Precision für finale Höhe beibehalten (gegen Terrassierung)
+            // Maintain float precision for final height (against terracing)
             float finalHeight = (float)baseHeight + detailVariation;
             
-            // Sicherstellen, dass Werte im gültigen Bereich bleiben
+            // Ensure values stay within valid range
             if (finalHeight < 0.0f) finalHeight = 0.0f;
             if (finalHeight > (float)_MAX_HEIGHT) finalHeight = (float)_MAX_HEIGHT;
             
-            // Runden statt Truncation für bessere Sub-Pixel-Verteilung
+            // Rounding instead of truncation for better sub-pixel distribution
             detailedData[y * newWidth + x] = (short int)(finalHeight + 0.5f);
         }
     }
@@ -1344,89 +1344,89 @@ static short int* AddProceduralDetail(const short int* originalData, int origina
     return detailedData;
 }
 
-// HILFSFUNKTIONEN
+// HELPER FUNCTIONS
 
-// Extrahiert Dateinamen aus Pfad und generiert PNG-Namen im aktuellen Verzeichnis
+// Extracts filename from path and generates PNG name in current directory
 static void generateOutputFilename(const char* inputPath, char* outputPath) {
     const char* filename = inputPath;
     const char* lastSlash = strrchr(inputPath, '/');
     
-    // Wenn ein Pfad-Separator gefunden wurde, nimm den Teil danach
+    // If a path separator was found, take the part after it
     if (lastSlash != NULL) {
         filename = lastSlash + 1;
     }
     
-    // Kopiere den Dateinamen und ersetze die Endung
+    // Copy the filename and replace the extension
     strcpy(outputPath, filename);
     
-    // Finde die letzte .hgt Endung und ersetze sie durch .png
+    // Find the last .hgt extension and replace it with .png
     char* extension = strrchr(outputPath, '.');
     if (extension != NULL && (strcmp(extension, ".hgt") == 0 || strcmp(extension, ".HGT") == 0)) {
         strcpy(extension, ".png");
     } else {
-        // Falls keine .hgt Endung gefunden wurde, hänge .png an
+        // If no .hgt extension was found, append .png
         strcat(outputPath, ".png");
     }
 }
 
-// NODATA-BEHANDLUNG
+// NODATA HANDLING
 
-// Prüft ob ein Rohwert ein NoData-Wert ist (nach Endian-Konvertierung)
+// Checks if a raw value is a NoData value (after endian conversion)
 static int isNoDataValue(int16_t value, int hgtType) {
-    // Nur für SRTM-Daten (30m/90m) NoData-Erkennung
+    // Only for SRTM data (30m/90m) NoData detection
     if (hgtType != HGT_TYPE_30 && hgtType != HGT_TYPE_90) {
         return 0;
     }
     
-    // NoData-Wert: -32768 (0x8000 in Big Endian)
+    // NoData value: -32768 (0x8000 in Big Endian)
     return (value == NODATA_VALUE_BE);
 }
 
-// Verarbeitet einen Höhenwert: Network-to-Host Byte Order + NoData-Behandlung + Clamping
+// Processes an elevation value: Network-to-Host Byte Order + NoData handling + Clamping
 static int16_t processElevationValue(int16_t rawValue, int hgtType, int* noDataCount) {
-    // 1. Endian-Konvertierung für SRTM-Daten (Big Endian -> Host Endian)
+    // 1. Endian conversion for SRTM data (Big Endian -> Host Endian)
     int16_t hostValue = rawValue;
     if (hgtType == HGT_TYPE_30 || hgtType == HGT_TYPE_90) {
         hostValue = (int16_t)ntohs((uint16_t)rawValue);  // Network (Big Endian) to Host
     }
     
-    // 2. NoData-Erkennung nach Endian-Konvertierung
+    // 2. NoData detection after endian conversion
     if (isNoDataValue(hostValue, hgtType)) {
         if (noDataCount != NULL) {
             (*noDataCount)++;
         }
-        return NODATA_REPLACEMENT;  // Ersatzwert für NoData
+        return NODATA_REPLACEMENT;  // Replacement value for NoData
     }
     
-    // 3. Clamping auf gültige Höhenwerte
+    // 3. Clamping to valid elevation values
     if (hostValue < 0) hostValue = 0;
     if (hostValue > _MAX_HEIGHT) hostValue = _MAX_HEIGHT;
     
     return hostValue;
 }
 
-// PARAMETER-MANAGEMENT FUNKTIONEN
+// PARAMETER MANAGEMENT FUNCTIONS
 
-// Initialisiere Standard-Optionen
+// Initialize default options
 static void initDefaultOptions(ProgramOptions *opts) {
     opts->scaleFactor = DEFAULT_SCALE_FACTOR;
     opts->detailIntensity = DEFAULT_DETAIL_INTENSITY;
     opts->noiseSeed = DEFAULT_NOISE_SEED;
     opts->enableDetail = ENABLE_PROCEDURAL_DETAIL;
-    opts->verbose = 1;  // Standard: Verbose Output
+    opts->verbose = 1;  // Default: Verbose output
     opts->showHelp = 0;
     opts->showVersion = 0;
-    opts->numThreads = DEFAULT_NUM_THREADS;  // Neue Option für Thread-Anzahl
-    opts->output16bit = 0;  // Standard: 8-Bit RGB Output
-    opts->gamma = 1.0f;     // Standard: Keine Gamma-Korrektur
-    opts->curveType = CURVE_LINEAR;  // Standard: Lineare Kurve
-    opts->minHeight = -1;   // Auto-Erkennung
-    opts->maxHeight = -1;   // Auto-Erkennung
-    opts->metadataFormat = METADATA_NONE;  // Standard: Keine Metadata
-    opts->alphaNoData = 0;  // Standard: Keine transparenten NoData-Pixel
+    opts->numThreads = DEFAULT_NUM_THREADS;  // New option for thread count
+    opts->output16bit = 0;  // Default: 8-bit RGB output
+    opts->gamma = 1.0f;     // Default: No gamma correction
+    opts->curveType = CURVE_LINEAR;  // Default: Linear curve
+    opts->minHeight = -1;   // Auto-detection
+    opts->maxHeight = -1;   // Auto-detection
+    opts->metadataFormat = METADATA_NONE;  // Default: No metadata
+    opts->alphaNoData = 0;  // Default: No transparent NoData pixels
 }
 
-// Zeige Hilfe-Text
+// Show help text
 static void showHelp(const char *programName) {
     printf("hgt2png v1.1.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation\n\n");
     printf("USAGE:\n");
@@ -1470,14 +1470,14 @@ static void showHelp(const char *programName) {
     printf("  Example: N48E011.hgt → N48E011.png\n\n");
 }
 
-// Zeige Version
+// Show version
 static void showVersion(void) {
     printf("hgt2png v1.1.0\n");
     printf("HGT to PNG Heightmap Converter with Procedural Detail Generation\n");
     printf("(C) 2025 Peter Ebel\n");
 }
 
-// Parse Kommandozeilen-Argumente
+// Parse command line arguments
 static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile) {
     int c;
     static struct option long_options[] = {
@@ -1614,17 +1614,17 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
     return 0;
 }
 
-// Schreibt Metadata-Sidecar-Datei für präzises Blender-Scaling
+// Writes metadata sidecar file for precise Blender scaling
 static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opts, const struct tag_FileInfoHGT* fi, 
                        int effectiveMinHeight, int effectiveMaxHeight) {
     
     if (opts->metadataFormat == METADATA_NONE) return;
     
-    // Metadata-Dateiname generieren
+    // Generate metadata filename
     char metadataFilename[512];
     strcpy(metadataFilename, pngFilename);
     
-    // PNG-Extension ersetzen
+    // Replace PNG extension
     char* dot = strrchr(metadataFilename, '.');
     if (dot) {
         if (opts->metadataFormat == METADATA_JSON) {
@@ -1640,11 +1640,11 @@ static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opt
         }
     }
     
-    // Geografische Bounds extrahieren
+    // Extract geographic bounds
     float south, north, west, east;
     int hasGeoBounds = extractGeoBounds(fi->szFilename, &south, &north, &west, &east);
     
-    // Pixel-Pitch berechnen (Meter pro Pixel)
+    // Calculate pixel pitch (meters per pixel)
     float pixelPitchMeters = 30.0f;  // Default SRTM-1
     if (fi->hgtType == HGT_TYPE_90) {
         pixelPitchMeters = 90.0f;  // SRTM-3
@@ -1652,7 +1652,7 @@ static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opt
         pixelPitchMeters = 30.0f;  // SRTM-1
     }
     
-    // Bei Procedural Detail: Pixel-Pitch durch Scale-Faktor teilen
+    // With procedural detail: divide pixel pitch by scale factor
     if (opts->enableDetail && opts->scaleFactor > 1) {
         pixelPitchMeters /= (float)opts->scaleFactor;
     }
@@ -1664,7 +1664,7 @@ static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opt
     }
     
     if (opts->metadataFormat == METADATA_JSON) {
-        // JSON-Format für maschinelle Verarbeitung
+        // JSON format for machine processing
         fprintf(metadataFile, "{\n");
         fprintf(metadataFile, "  \"source_file\": \"%s\",\n", fi->szFilename);
         fprintf(metadataFile, "  \"png_file\": \"%s\",\n", pngFilename);
@@ -1708,7 +1708,7 @@ static void writeMetadataFile(const char* pngFilename, const ProgramOptions* opt
         
         fprintf(metadataFile, "}\n");
     } else {
-        // TXT-Format für Menschen lesbar
+        // TXT format for human readability
         fprintf(metadataFile, "HGT2PNG Metadata\n");
         fprintf(metadataFile, "================\n\n");
         fprintf(metadataFile, "Source File: %s\n", fi->szFilename);
