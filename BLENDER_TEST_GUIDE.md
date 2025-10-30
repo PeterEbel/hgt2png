@@ -1,172 +1,172 @@
-# 🎯 BLENDER SCRIPT TEST - Schritt-für-Schritt Anleitung
+# 🎯 BLENDER SCRIPT TEST - Step-by-Step Guide
 
-## ✅ **Vorbereitung abgeschlossen:**
+## ✅ **Preparation completed:**
 ```
-📁 Generierte Dateien:
+📁 Generated files:
    N49E004.png (7202×7202 16-bit Heightmap)
-   N49E004.json (Metadaten mit Höhenbereich 54-502m)
-   blender_dyer.py (Erweitertes Färbungs-Script v2.0)
+   N49E004.json (Metadata with elevation range 54-502m)
+   blender_dyer.py (Enhanced coloring script v2.0)
 ```
 
-## 🚀 **Blender Setup (5 Minuten)**
+## 🚀 **Blender Setup (5 minutes)**
 
-### **1. Neue Blender-Datei erstellen**
-- Blender öffnen
-- Standard-Cube löschen (X → Delete)
-- **Plane hinzufügen**: `Shift+A` → Mesh → Plane
+### **1. Create new Blender file**
+- Open Blender
+- Delete default cube (X → Delete)
+- **Add Plane**: `Shift+A` → Mesh → Plane
 
-### **2. Plane für Heightmap vorbereiten**
+### **2. Prepare Plane for heightmap**
 ```
-1. Plane auswählen
+1. Select plane
 2. Tab → Edit Mode
-3. Rechtsklick → Subdivide
-4. Wiederholen bis ~1000-5000 Faces (je nach Performance)
-5. Tab → Object Mode zurück
+3. Right-click → Subdivide
+4. Repeat until ~1000-5000 faces (depending on performance)
+5. Tab → Object Mode back
 ```
 
-### **3. Displacement Modifier hinzufügen**
+### **3. Add Displacement Modifier**
 ```
-Properties Panel → Modifier Properties (Schraubenschlüssel-Icon)
+Properties Panel → Modifier Properties (Wrench icon)
 → Add Modifier → Displace
 
 Displacement Settings:
 - Texture → New → Image Texture
-- Open Image → N49E004.png auswählen
-- Strength: 0.01 (anpassen je nach gewünschter Höhe)
+- Open Image → Select N49E004.png
+- Strength: 0.01 (adjust for desired height)
 - Direction: Z
 ```
 
-### **4. Script ausführen**
+### **4. Run script**
 ```
-1. Scripting Tab in Blender
-2. Text → Open → blender_dyer.py laden
-3. Script ausführen (Play-Button oder Alt+P)
+1. Scripting tab in Blender
+2. Text → Open → Load blender_dyer.py
+3. Run script (Play button or Alt+P)
 ```
 
-## 📝 **Script-Befehle zum Testen**
+## 📝 **Script Commands for Testing**
 
-### **🚀 Automatische Erkennung (Empfohlen)**
+### **🚀 Automatic Detection (Recommended)**
 ```python
-# Führe dies im Blender Script-Editor aus:
+# Run this in Blender Script Editor:
 color_heightmap_faces_advanced()
 ```
 
-### **🌲 Verschiedene Biome testen**
+### **🌲 Test Different Biomes**
 ```python
-# Wald (Standard)
+# Forest (default)
 color_heightmap_faces_advanced(biome='forest')
 
-# Hochgebirge mit Neigungsanalyse
+# High Mountains with slope analysis
 color_heightmap_faces_advanced(biome='alpine', use_slope=True, slope_intensity=0.5)
 
-# Wüste
+# Desert
 color_heightmap_faces_advanced(biome='desert')
 
-# Regenwald
+# Rainforest
 color_heightmap_faces_advanced(biome='tropical')
 ```
 
-### **⚙️ Erweiterte Optionen**
+### **⚙️ Advanced Options**
 ```python
-# Mit Metadaten und Neigungsanalyse
+# With metadata and slope analysis
 color_heightmap_faces_advanced(
-    obj_name="Plane",           # Objekt-Name
-    biome='alpine',             # Biom-Typ  
-    use_slope=True,             # Neigungsanalyse aktivieren
-    use_metadata=True,          # JSON-Metadaten verwenden
-    slope_intensity=0.7         # Starke Fels-Effekte
+    obj_name="Plane",           # Object name
+    biome='alpine',             # Biome type  
+    use_slope=True,             # Activate slope analysis
+    use_metadata=True,          # Use JSON metadata
+    slope_intensity=0.7         # Strong rock effects
 )
 ```
 
-## 🎨 **Viewport-Einstellungen für beste Sicht**
+## 🎨 **Viewport Settings for Best View**
 
 ### **Material Preview Mode**
 ```
-Viewport Shading → Material Preview (3. Icon von links)
-oder Taste: 3
+Viewport Shading → Material Preview (3rd icon from left)
+or Key: 3
 ```
 
 ### **Rendered View**
 ```
-Viewport Shading → Rendered (4. Icon von links) 
-oder Taste: 4
+Viewport Shading → Rendered (4th icon from left) 
+or Key: 4
 ```
 
 ## 🔧 **Troubleshooting**
 
-### **❌ "Keine Färbung sichtbar"**
+### **❌ "No coloring visible"**
 ```python
-# 1. Prüfe Material-Zuweisung
+# 1. Check material assignment
 print(bpy.context.object.data.materials)
 
-# 2. Erzwinge Material-Setup
+# 2. Force material setup
 setup_material_nodes(bpy.data.materials["Heightmap_Material_Forest"])
 
-# 3. Viewport auf Material Preview umstellen
+# 3. Switch viewport to Material Preview
 ```
 
-### **❌ "JSON nicht gefunden"**
+### **❌ "JSON not found"**
 ```python
-# Ohne Metadaten ausführen (verwendet Z-Koordinaten)
+# Run without metadata (uses Z-coordinates)
 color_heightmap_faces_advanced(use_metadata=False)
 ```
 
-### **❌ "Objekt nicht erkannt"**
+### **❌ "Object not recognized"**
 ```python
-# Manuell Objekt-Namen angeben
+# Manually specify object name
 color_heightmap_faces_advanced(obj_name="Plane")
 ```
 
-## 📊 **Erwartete Ergebnisse**
+## 📊 **Expected Results**
 
-### **🌲 Forest Biom**
-- Tal-Bereiche: Beige/Sand-Farben
-- Mittlere Höhen: Verschiedene Grüntöne
-- Höchste Bereiche: Dunkles Nadelwald-Grün
+### **🌲 Forest Biome**
+- Valley areas: Beige/Sand colors
+- Medium heights: Various green tones
+- Highest areas: Dark coniferous forest green
 
-### **🏔️ Alpine Biom (mit Slope)**
-- Flache Bereiche: Alpengras (Grün)
-- Steile Hänge: Fels-Farben (Grau/Braun)
-- Höchste Gipfel: Schnee (Weiß)
+### **🏔️ Alpine Biome (with Slope)**
+- Flat areas: Alpine grass (Green)
+- Steep slopes: Rock colors (Gray/Brown)
+- Highest peaks: Snow (White)
 
-### **Console-Output**
+### **Console Output**
 ```
-🎯 HGT2PNG Metadaten gefunden: N49E004.json
-📊 METADATEN-INFORMATION:
-Quelle: N49E004.hgt
-Höhenbereich: 54m - 502m
-Pixel-Auflösung: 45.0m/pixel
-✅ Terrain-Färbung abgeschlossen für 'Plane'
+🎯 HGT2PNG Metadata found: N49E004.json
+📊 METADATA INFORMATION:
+Source: N49E004.hgt
+Elevation range: 54m - 502m
+Pixel resolution: 45.0m/pixel
+✅ Terrain coloring completed for 'Plane'
 ```
 
-## 🎮 **Live-Demo Commands**
+## 🎮 **Live Demo Commands**
 
-### **Quick Demo - Alle Biome durchprobieren**
+### **Quick Demo - Try all biomes**
 ```python
-# Führe nacheinander aus:
+# Run sequentially:
 import time
 
 biomes = ['forest', 'alpine', 'desert', 'tropical']
 for biome in biomes:
     print(f"\n🌍 Testing {biome.title()} biome...")
     color_heightmap_faces_advanced(biome=biome, use_slope=True)
-    # In Blender: Warten und visuell prüfen
+    # In Blender: Wait and visually check
 ```
 
 ### **Performance Test**
 ```python
-# Teste Batch-Processing
+# Test batch processing
 batch_process_heightmaps(biome='alpine', use_slope=True)
 ```
 
-## 💡 **Pro-Tips**
+## 💡 **Pro Tips**
 
-1. **Subdivision Level**: Start mit wenig Subdivision, erhöhe bei Bedarf
-2. **Displacement Strength**: 0.01-0.1 je nach gewünschter Höhe
-3. **Viewport Performance**: Deaktiviere `use_slope` bei großen Meshes
-4. **Lighting**: Füge HDRI oder Sun-Light für dramatische Ergebnisse hinzu
-5. **Camera Angle**: Setze Kamera schräg für beste Terrain-Sicht
+1. **Subdivision Level**: Start with low subdivision, increase as needed
+2. **Displacement Strength**: 0.01-0.1 depending on desired height
+3. **Viewport Performance**: Disable `use_slope` on large meshes
+4. **Lighting**: Add HDRI or Sun light for dramatic results
+5. **Camera Angle**: Set camera at angle for best terrain view
 
 ---
 
-**🎯 Ziel: Realistisches, automatisch eingefärbtes Terrain in unter 5 Minuten!**
+**🎯 Goal: Realistic, automatically colored terrain in under 5 minutes!**

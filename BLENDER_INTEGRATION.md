@@ -1,52 +1,52 @@
 # HGT2PNG Blender Integration v2.0
 
-## 🎯 **Übersicht**
-Das erweiterte `blender_dyer.py` Script bietet professionelle automatische Terrain-Färbung für Heightmaps in Blender mit **hgt2png Integration**, **Biom-spezifischen Farbpaletten**, und **Neigungsanalyse** für realistische Landschaftsvisualisierung.
+## 🎯 **Overview**
+The enhanced `blender_dyer.py` script provides professional automatic terrain coloring for heightmaps in Blender with **hgt2png integration**, **biome-specific color palettes**, and **slope analysis** for realistic landscape visualization.
 
-## 🚀 **Neue Features v2.0**
+## 🚀 **New Features v2.0**
 
-### ✨ **Automatische Integration**
-- **Automatische Heightmap-Erkennung**: Findet Terrain-Objekte automatisch
-- **hgt2png JSON-Metadaten Support**: Lädt präzise Höhenbereiche und geografische Daten
-- **Displacement-Modifier Integration**: Berücksichtigt Blender Displacement-Skalierung
-- **Legacy-Kompatibilität**: Unterstützt alte Script-Versionen
+### ✨ **Automatic Integration**
+- **Automatic Heightmap Detection**: Finds terrain objects automatically
+- **hgt2png JSON Metadata Support**: Loads precise elevation ranges and geographic data
+- **Displacement Modifier Integration**: Takes Blender displacement scaling into account
+- **Legacy Compatibility**: Supports old script versions
 
-### 🌍 **4 Biom-spezifische Farbpaletten**
+### 🌍 **4 Biome-specific Color Palettes**
 ```python
-'forest'   → Temperater Wald (Beige→Grün→Dunkelgrün)
-'alpine'   → Hochgebirge (Braun→Gras→Fels→Grau→Schnee)
-'desert'   → Wüste (Hell-→Dunkel-Sand→Fels)
-'tropical' → Regenwald (Strand→Tropengrün→Dschungel)
+'forest'   → Temperate Forest (Beige→Green→Dark Green)
+'alpine'   → High Mountains (Brown→Grass→Rock→Gray→Snow)
+'desert'   → Desert (Light→Dark Sand→Rock)
+'tropical' → Rainforest (Beach→Tropical Green→Jungle)
 ```
 
-### ⛰️ **Intelligente Neigungsanalyse**
-- **Slope-basierte Farbmodifikation**: Steile Hänge → Fels/Geröll-Farben
-- **Terrain-spezifische Anpassung**: Alpine Gebiete mit realistischer Fels-Verteilung
-- **Einstellbare Intensität**: Slope-Effekt von subtil bis dramatisch
+### ⛰️ **Intelligent Slope Analysis**
+- **Slope-based Color Modification**: Steep slopes → Rock/Scree colors
+- **Terrain-specific Adaptation**: Alpine areas with realistic rock distribution
+- **Adjustable Intensity**: Slope effect from subtle to dramatic
 
-### 🔄 **Batch-Processing**
-- **Mehrere Heightmaps**: Verarbeitet alle Terrain-Objekte gleichzeitig
-- **Konsistente Paletten**: Einheitliche Farbgebung über multiple Objekte
+### 🔄 **Batch Processing**
+- **Multiple Heightmaps**: Processes all terrain objects simultaneously
+- **Consistent Palettes**: Uniform coloring across multiple objects
 
-## 📖 **Verwendung**
+## 📖 **Usage**
 
-### **🚀 Schnellstart (Empfohlen)**
+### **🚀 Quick Start (Recommended)**
 ```python
-# Automatische Erkennung mit modernem Wald-Biom
+# Automatic detection with modern forest biome
 color_heightmap_faces_advanced()
 ```
 
-### **🌲 Verschiedene Biome**
+### **🌲 Different Biomes**
 ```python
-color_heightmap_faces_advanced(biome='forest')      # Temperater Wald
-color_heightmap_faces_advanced(biome='alpine')      # Hochgebirge
-color_heightmap_faces_advanced(biome='desert')      # Wüste
-color_heightmap_faces_advanced(biome='tropical')    # Regenwald
+color_heightmap_faces_advanced(biome='forest')      # Temperate Forest
+color_heightmap_faces_advanced(biome='alpine')      # High Mountains
+color_heightmap_faces_advanced(biome='desert')      # Desert
+color_heightmap_faces_advanced(biome='tropical')    # Rainforest
 ```
 
-### **⛰️ Mit Neigungsanalyse**
+### **⛰️ With Slope Analysis**
 ```python
-# Realistische Fels-Bereiche an steilen Hängen
+# Realistic rock areas on steep slopes
 color_heightmap_faces_advanced(
     biome='alpine', 
     use_slope=True, 
@@ -54,45 +54,45 @@ color_heightmap_faces_advanced(
 )
 ```
 
-### **📊 Mit hgt2png Metadaten**
+### **📊 With hgt2png Metadata**
 ```python
-# Lädt automatisch JSON-Metadaten für präzise Höhenbereiche
+# Automatically loads JSON metadata for precise elevation ranges
 color_heightmap_faces_advanced(use_metadata=True)
 ```
 
-### **🔄 Batch-Verarbeitung**
+### **🔄 Batch Processing**
 ```python
-# Alle Heightmaps in der Szene verarbeiten
+# Process all heightmaps in the scene
 batch_process_heightmaps(biome='forest', use_slope=True)
 ```
 
 ## 🛠️ **HGT2PNG → Blender Workflow**
 
-### **1. Heightmap mit Metadaten generieren**
+### **1. Generate Heightmap with Metadata**
 ```bash
-# In hgt2png Verzeichnis:
+# In hgt2png directory:
 ./hgt2png --16bit --metadata json --scale-factor 3 terrain.hgt
-# Erzeugt: terrain.png + terrain.json
+# Creates: terrain.png + terrain.json
 ```
 
-### **2. In Blender importieren**
-1. **Plane erstellen** und subdivision
-2. **Displacement Modifier** hinzufügen
-3. **16-bit PNG** als Displacement Texture laden
-4. **blender_dyer.py** ausführen
+### **2. Import into Blender**
+1. **Create Plane** and add subdivision
+2. **Add Displacement Modifier**
+3. **Load 16-bit PNG** as Displacement Texture
+4. **Run blender_dyer.py**
 
-### **3. Automatische Färbung**
+### **3. Automatic Coloring**
 ```python
-# Script in Blender ausführen - erkennt automatisch:
-# - JSON-Metadaten (terrain.json)  
-# - Displacement-Skalierung
-# - Terrain-Objekt (Plane/Heightmap)
+# Run script in Blender - automatically detects:
+# - JSON metadata (terrain.json)  
+# - Displacement scaling
+# - Terrain object (Plane/Heightmap)
 color_heightmap_faces_advanced(biome='alpine', use_slope=True)
 ```
 
-## 📊 **Metadaten-Integration**
+## 📊 **Metadata Integration**
 
-### **JSON-Format (hgt2png v1.1.0)**
+### **JSON Format (hgt2png v1.1.0)**
 ```json
 {
   "elevation": {
@@ -110,99 +110,99 @@ color_heightmap_faces_advanced(biome='alpine', use_slope=True)
 }
 ```
 
-### **Automatische Erkennung**
-- Sucht JSON-Dateien mit gleichem Namen wie Heightmap-Objekt
-- Fallback: Alle JSON-Dateien im Blend-Verzeichnis scannen
-- Legacy-Format Unterstützung für ältere hgt2png Versionen
+### **Automatic Detection**
+- Searches for JSON files with same name as heightmap object
+- Fallback: Scans all JSON files in blend directory
+- Legacy format support for older hgt2png versions
 
-## 🎨 **Biom-Details**
+## 🎨 **Biome Details**
 
-### **🌲 Forest (Temperater Wald)**
+### **🌲 Forest (Temperate Forest)**
 ```
-0-20%: Beige (Talsohlen/Geröll)
-20-40%: Helles Grasgrün  
-40-60%: Mittleres Grün (Wiesen)
-60-80%: Waldgrün (Dichte Wälder)
-80-100%: Dunkelgrün (Nadelwälder)
-```
-
-### **🏔️ Alpine (Hochgebirge)**
-```
-0-20%: Braune Täler
-20-40%: Alpengras  
-40-60%: Felsbraun
-60-80%: Grauer Fels
-80-100%: Schnee/Eis
+0-20%: Beige (Valley floors/Scree)
+20-40%: Light Grass Green  
+40-60%: Medium Green (Meadows)
+60-80%: Forest Green (Dense Forests)
+80-100%: Dark Green (Coniferous Forests)
 ```
 
-### **🏜️ Desert (Wüste)**
+### **🏔️ Alpine (High Mountains)**
 ```
-0-20%: Heller Sand
-20-40%: Mittlerer Sand
-40-60%: Dunkler Sand  
-60-80%: Felsbraun
-80-100%: Dunkler Fels
-```
-
-### **🌺 Tropical (Regenwald)**
-```
-0-20%: Strand/Küste
-20-40%: Helles Tropengrün
-40-60%: Dichtes Grün
-60-80%: Regenwald  
-80-100%: Dichter Dschungel
+0-20%: Brown Valleys
+20-40%: Alpine Grass  
+40-60%: Rock Brown
+60-80%: Gray Rock
+80-100%: Snow/Ice
 ```
 
-## ⚙️ **Erweiterte Parameter**
+### **🏜️ Desert (Desert)**
+```
+0-20%: Light Sand
+20-40%: Medium Sand
+40-60%: Dark Sand  
+60-80%: Rock Brown
+80-100%: Dark Rock
+```
 
-### **color_heightmap_faces_advanced() Parameter:**
+### **🌺 Tropical (Rainforest)**
+```
+0-20%: Beach/Coast
+20-40%: Light Tropical Green
+40-60%: Dense Green
+60-80%: Rainforest  
+80-100%: Dense Jungle
+```
+
+## ⚙️ **Advanced Parameters**
+
+### **color_heightmap_faces_advanced() Parameters:**
 ```python
-obj_name=None,           # Objekt-Name (None=auto)
-biome='forest',          # Biom-Typ  
-use_slope=True,          # Neigungsanalyse
-use_metadata=True,       # JSON-Metadaten laden
-slope_intensity=0.3      # Neigungseffekt-Stärke (0.0-1.0)
+obj_name=None,           # Object name (None=auto)
+biome='forest',          # Biome type  
+use_slope=True,          # Slope analysis
+use_metadata=True,       # Load JSON metadata
+slope_intensity=0.3      # Slope effect strength (0.0-1.0)
 ```
 
-### **Neigungsanalyse:**
-- `slope_intensity=0.0`: Keine Neigungseffekte
-- `slope_intensity=0.3`: Subtile Fels-Bereiche (Standard)
-- `slope_intensity=0.7`: Deutliche Fels-Strukturen
-- `slope_intensity=1.0`: Dramatische Fels-Dominanz
+### **Slope Analysis:**
+- `slope_intensity=0.0`: No slope effects
+- `slope_intensity=0.3`: Subtle rock areas (default)
+- `slope_intensity=0.7`: Clear rock structures
+- `slope_intensity=1.0`: Dramatic rock dominance
 
-## 🔧 **Material-System**
-- **Automatisches Material-Setup**: Erstellt Shader-Knoten automatisch
-- **Face Color Attributes**: Nutzt moderne Blender Color Attribute Pipeline
-- **Multi-Material Support**: Verschiedene Biom-Materialien parallel
+## 🔧 **Material System**
+- **Automatic Material Setup**: Creates shader nodes automatically
+- **Face Color Attributes**: Uses modern Blender Color Attribute pipeline
+- **Multi-Material Support**: Different biome materials in parallel
 
-## 🚨 **Fehlerbehebung**
+## 🚨 **Troubleshooting**
 
-### **Keine Färbung sichtbar:**
-- Stelle sicher, dass Viewport Shading auf "Material Preview" oder "Rendered" steht
-- Prüfe, ob das Material korrekt zugewiesen wurde
+### **No coloring visible:**
+- Make sure Viewport Shading is set to "Material Preview" or "Rendered"
+- Check if material is correctly assigned
 
-### **Falsche Höhenbereiche:**
+### **Wrong elevation ranges:**
 ```python
-# Erzwinge manuelle Z-Koordinaten-Analyse
+# Force manual Z-coordinate analysis
 color_heightmap_faces_advanced(use_metadata=False)
 ```
 
-### **JSON-Metadaten nicht gefunden:**
-- Stelle sicher, dass JSON-Datei im gleichen Verzeichnis wie .blend liegt
-- Prüfe Dateinamen: `terrain.hgt` → `terrain.json`
+### **JSON metadata not found:**
+- Make sure JSON file is in same directory as .blend file
+- Check filename: `terrain.hgt` → `terrain.json`
 
-## 💡 **Performance-Tipps**
-- **Neigungsanalyse** bei großen Meshes (>1M Faces) deaktivieren für bessere Performance
-- **Batch-Processing** für konsistente Ergebnisse bei mehreren Heightmaps
-- **16-bit PNG** Displacement Maps für beste Qualität verwenden
+## 💡 **Performance Tips**
+- **Disable slope analysis** on large meshes (>1M faces) for better performance
+- **Use batch processing** for consistent results with multiple heightmaps
+- **Use 16-bit PNG** displacement maps for best quality
 
-## 🔄 **Legacy-Kompatibilität**
+## 🔄 **Legacy Compatibility**
 ```python
-# Alte Funktion funktioniert weiterhin:
+# Old function still works:
 color_heightmap_faces_five_colors_green("Plane")
-# → Ruft automatisch neue Funktion mit forest-Biom auf
+# → Automatically calls new function with forest biome
 ```
 
 ---
 
-**Entwickelt für hgt2png v1.1.0 | Blender 3.0+ | Python 3.8+**
+**Developed for hgt2png v1.1.0 | Blender 3.0+ | Python 3.8+**
