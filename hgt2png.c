@@ -151,13 +151,13 @@ typedef struct
 
 // Alpine Biome Configuration - Realistic European Alps Parameters
 #define ALPINE_MIN_ELEVATION 700.0f  // Vegetation starts at ~700m (montane zone)
-#define ALPINE_MAX_ELEVATION 2000.0f // Vegetation ends at ~2000m (alpine zone)
-#define ALPINE_MAX_SLOPE 60.0f       // Maximum slope for vegetation (degrees)
+#define ALPINE_MAX_ELEVATION 2400.0f // Vegetation ends at ~2400m (high alpine zone)
+#define ALPINE_MAX_SLOPE 45.0f       // Maximum slope for vegetation (degrees) - more realistic
 #define ALPINE_TREE_LINE 1800.0f     // Tree line elevation (spruce/larch limit)
 #define ALPINE_BUSH_LINE 2200.0f     // Shrub line (dwarf pine, rhododendron)
-#define ALPINE_GRASS_LINE 2500.0f    // Grass line (alpine meadows)
-#define ALPINE_ASPECT_MODIFIER 0.3f  // South faces drier, North faces moister
-#define ALPINE_DRAINAGE_BONUS 0.4f   // Valley bottoms have more vegetation
+#define ALPINE_GRASS_LINE 2400.0f    // Grass line (alpine meadows) - consistent with max
+#define ALPINE_ASPECT_MODIFIER 0.2f  // South faces drier, North faces moister - reduced
+#define ALPINE_DRAINAGE_BONUS 0.3f   // Valley bottoms have more vegetation - reduced
 
 // Vegetation density calculation functions
 static float calculate_slope_angle(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, float pixel_pitch_meters);
@@ -2232,7 +2232,7 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
     if (!params->enabled)
         return 0;
 
-    // Base elevation factor
+    // Base elevation factor - MORE REALISTIC DISTRIBUTION
     float elevation_factor = 0.0f;
 
     if (elevation < params->minElevation)
@@ -2243,56 +2243,70 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
     {
         // Montane forest zone (700-1800m) - dense vegetation
         float range = params->treeLine - params->minElevation;
-        elevation_factor = 1.0f - ((elevation - params->minElevation) / range) * 0.3f; // 70-100% density
+        float position = (elevation - params->minElevation) / range;
+        elevation_factor = 0.6f + position * 0.4f; // 60-100% density (peak at tree line)
     }
     else if (elevation <= params->bushLine)
     {
         // Subalpine zone (1800-2200m) - shrubs and dwarf trees
         float range = params->bushLine - params->treeLine;
         float position = (elevation - params->treeLine) / range;
-        elevation_factor = 0.7f - position * 0.4f; // 30-70% density
+        elevation_factor = 0.8f - position * 0.5f; // 80% down to 30% density
     }
     else if (elevation <= params->grassLine)
     {
-        // Alpine zone (2200-2500m) - alpine meadows and cushion plants
+        // Alpine zone (2200-2400m) - alpine meadows and cushion plants
         float range = params->grassLine - params->bushLine;
         float position = (elevation - params->bushLine) / range;
-        elevation_factor = 0.3f - position * 0.2f; // 10-30% density
+        elevation_factor = 0.3f - position * 0.25f; // 30% down to 5% density
     }
     else
     {
         elevation_factor = 0.0f; // Above vegetation limit (nival zone)
     }
 
-    // Slope factor - steeper slopes have less vegetation
+    // Slope factor - steeper slopes have less vegetation - MORE RESTRICTIVE
     float slope_factor = 1.0f;
     if (slope > params->maxSlope)
     {
         slope_factor = 0.0f; // Too steep for vegetation
     }
-    else if (slope > 30.0f)
+    else if (slope > 25.0f)  // Start reducing at 25° instead of 30°
     {
-        slope_factor = 1.0f - ((slope - 30.0f) / (params->maxSlope - 30.0f)) * 0.8f; // Gradual reduction
+        // More aggressive slope reduction: 25°-45° range
+        float slope_range = params->maxSlope - 25.0f;
+        float slope_excess = slope - 25.0f;
+        slope_factor = 1.0f - (slope_excess / slope_range) * 0.9f; // 90% reduction, not 80%
+    }
+    else if (slope > 15.0f)  // Even gentle slopes reduce vegetation
+    {
+        // Gentle slope reduction: 15°-25° range  
+        slope_factor = 1.0f - ((slope - 15.0f) / 10.0f) * 0.3f; // 30% reduction max
     }
 
-    // Aspect factor - South faces are drier, North faces moister
+    // Aspect factor - South faces are drier, North faces moister - REFINED
     float aspect_factor = 1.0f;
     if (aspect >= 135.0f && aspect <= 225.0f)
     {
-        // South-facing slopes (135°-225°) - drier
-        aspect_factor = 1.0f - params->aspectModifier;
+        // South-facing slopes (135°-225°) - significantly drier at high elevation
+        float elevation_factor_aspect = elevation > 1500.0f ? 1.5f : 1.0f; // More effect at higher elevation
+        aspect_factor = 1.0f - (params->aspectModifier * elevation_factor_aspect);
     }
     else if (aspect >= 315.0f || aspect <= 45.0f)
     {
-        // North-facing slopes (315°-45°) - moister
+        // North-facing slopes (315°-45°) - moister, better for vegetation
         aspect_factor = 1.0f + params->aspectModifier;
     }
 
-    // Drainage factor bonus for valleys
+    // Drainage factor bonus for valleys - REDUCED EFFECT
     float drainage_factor = 1.0f + (drainage * params->drainageBonus);
 
-    // Combine all factors
+    // Combine all factors - ADD MINIMUM THRESHOLD
     float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor;
+
+    // Apply minimum threshold - no vegetation below 5% density
+    if (final_density < 0.05f)
+        final_density = 0.0f;
 
     // Clamp to 0-1 range
     if (final_density < 0.0f)
