@@ -1,9 +1,12 @@
 
-High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation and professional 3D workflow integration.
+# HGT2PNG v1.2.0 - Professional SRTM Terrain Converter
+
+High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation, **Alpine vegetation mask generation**, and professional 3D workflow integration.
 
 [![Performance](https://img.shields.io/badge/Performance-6x_faster-green.svg)](##performance)
 [![OpenMP](https://img.shields.io/badge/OpenMP-Optimized-blue.svg)](#features)
 [![16-bit](https://img.shields.io/badge/PNG-16--bit_support-orange.svg)](#output-formats)
+[![Vegetation](https://img.shields.io/badge/Vegetation-Alpine_Biomes-forestgreen.svg)](#vegetation-masks)
 
 ## ✨ Key Features
 
@@ -28,6 +31,12 @@ High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG di
 - **Multi-Threading**: Process multiple HGT files in parallel using all CPU cores
 - **Smart Scheduling**: Dynamic load balancing for optimal resource utilization
 - **Progress Tracking**: Real-time progress indication for large-scale processing
+
+### 🌲 **Vegetation Mask Generation**
+- **Alpine Biome System**: Scientifically accurate vegetation distribution based on elevation, slope, and aspect
+- **Realistic Parameters**: Tree line (1800m), bush line (2200m), grass line (2400m), max slope (45°)
+- **Grayscale Masks**: 0-255 density values for Blender material mixing and procedural landscapes
+- **Geographic Accuracy**: North/south slope effects, valley drainage patterns, elevation zones
 
 ## 📊 Performance Comparison
 
@@ -124,6 +133,21 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 ./hgt2png --16bit --curve linear --gamma 1.0 --metadata json survey.hgt
 ```
 
+### Vegetation Mask Generation (NEW! 🌲)
+```bash
+# Alpine vegetation masks for mountain terrain
+./hgt2png --vegetation-mask --biome alpine N46E007.hgt
+# → Creates N46E007.png + N46E007_vegetation_alpine.png
+
+# Combined heightmap + vegetation mask
+./hgt2png --16bit --vegetation-mask --biome alpine --metadata json terrain.hgt
+# → terrain.png (displacement) + terrain_vegetation_alpine.png (vegetation density)
+
+# Blender-ready workflow: heightmap + vegetation + metadata
+./hgt2png --16bit --alpha-nodata --vegetation-mask --biome alpine \
+          --metadata json --scale-factor 3 mountains.hgt
+```
+
 ## 📖 Documentation
 
 - **[Options.md](Options.md)** - Complete parameter reference with 3D workflow examples
@@ -143,6 +167,8 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 | `-c, --curve <type>` | Mapping curve (linear\|log) | `-c log` |
 | `-x, --metadata <format>` | Export metadata (json\|txt) | `-x json` |
 | `-d, --disable-detail` | Original resolution only | `-d` |
+| **`-V, --vegetation-mask`** | **Generate vegetation density mask** | **`-V`** |
+| **`-B, --biome <type>`** | **Select biome (alpine\|temperate\|tropical)** | **`-B alpine`** |
 
 ## 🎨 Output Formats & Quality
 
@@ -160,6 +186,12 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 - **Use case**: Island terrain, tile systems, compositing
 - **Features**: NoData pixels transparent, seamless overlays
 - **File size**: ~75MB for 10803×10803
+
+### Vegetation Mask Format
+- **Use case**: Blender material mixing, procedural landscape generation
+- **Format**: 8-bit grayscale PNG (0-255 vegetation density)
+- **Usage**: White = dense vegetation, Black = no vegetation (rock/snow/steep slopes)
+- **File size**: ~6MB for 10803×10803 (highly compressed due to natural patterns)
 
 ## 🧬 Technical Architecture
 
@@ -203,6 +235,31 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 - **Hydrology**: Watershed analysis with enhanced detail
 - **Geology**: Terrain visualization for geological surveys
 - **Urban Planning**: Base terrain for development simulations
+- **Ecology**: Alpine vegetation distribution modeling for conservation and climate research
+
+## 🌲 Vegetation Masks
+
+### Alpine Biome System
+The Alpine vegetation mask generator creates scientifically accurate vegetation distribution maps based on real-world ecological parameters:
+
+#### Elevation Zones
+- **Montane Forest** (700-1800m): Dense coniferous forests (spruce, fir, larch)
+- **Subalpine Zone** (1800-2200m): Transition zone with shrinking trees and dwarf pine
+- **Alpine Zone** (2200-2400m): Alpine meadows, cushion plants, sparse grass
+- **Nival Zone** (>2400m): No vegetation (permanent snow and rock)
+
+#### Environmental Factors
+- **Slope Limitation**: Maximum 45° for vegetation growth
+- **Aspect Effects**: South faces drier (less vegetation), North faces moister (more vegetation)
+- **Drainage Patterns**: Valley bottoms support more vegetation than exposed ridges
+- **Gradual Transitions**: Realistic density gradients between zones
+
+#### Blender Integration
+```glsl
+// Use vegetation mask as Mix Factor in Shader Editor
+vegetationDensity = texture(vegetation_mask, uv).r;
+finalColor = mix(rockMaterial, vegetationMaterial, vegetationDensity);
+```
 
 ## 📊 System Requirements
 

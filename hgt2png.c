@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.1.0
+ * HGT2PNG - Professional Heightmap Converter v1.2.0
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -22,10 +22,11 @@
  * SOFTWARE.
  *
  *********************************************************************************
- *** Project:            HGT to PNG Heightmap Converter with OpenMP Optimization
- *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite)
+ *** Project:            HGT to PNG Heightmap Converter with Alpine Vegetation Masks
+ *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite), 2025-11-05 (v1.2.0 Vegetation)
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Professional conversion of SRTM HGT files to PNG displacement maps
+ ***                     with Alpine vegetation mask generation for realistic 3D landscapes
  *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 $(pkg-config --cflags --libs libpng) -lm -pthread -fopenmp -mavx2 -O3
  *** Dependencies:       libpng-dev: sudo apt-get install libpng-dev pkg-config
  *** GitHub:             https://github.com/PeterEbel/hgt2png
@@ -36,6 +37,8 @@
  *** 1.0.1   2023-10-23  Ebel          Link switch changed to -lpng
  *** 1.1.0   2025-10-27  Ebel          OpenMP optimization, 16-bit PNG, alpha transparency,
  ***                                   const-correctness, memory safety, professional features
+ *** 1.2.0   2025-11-05  Ebel          Alpine vegetation mask generation system with scientific
+ ***                                   biome modeling, elevation/slope/aspect analysis
  **********************************************************************************
  */
 
@@ -364,7 +367,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.1.0 (C) 2025 - with Procedural Detail Generation\n");
+        fprintf(stderr, "\nhgt2png Converter v1.2.0 (C) 2025 - with Procedural Detail Generation and Alpine Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
     }
@@ -1692,7 +1695,7 @@ static void initDefaultOptions(ProgramOptions *opts)
 // Show help text
 static void showHelp(const char *programName)
 {
-    printf("hgt2png v1.1.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation\n\n");
+    printf("hgt2png v1.2.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Alpine Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
 
@@ -1742,9 +1745,10 @@ static void showHelp(const char *programName)
 // Show version
 static void showVersion(void)
 {
-    printf("hgt2png v1.1.0\n");
-    printf("HGT to PNG Heightmap Converter with Procedural Detail Generation\n");
-    printf("(C) 2025 Peter Ebel\n");
+    printf("hgt2png v1.2.0\n");
+    printf("Professional SRTM HGT to PNG Converter with Alpine Vegetation Masks\n");
+    printf("Features: OpenMP parallelization, procedural detail generation, vegetation biomes\n");
+    printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
 }
 
 // Parse command line arguments
