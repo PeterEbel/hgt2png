@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.2.0
+ * HGT2PNG - Professional Heightmap Converter v1.3.0
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -22,11 +22,11 @@
  * SOFTWARE.
  *
  *********************************************************************************
- *** Project:            HGT to PNG Heightmap Converter with Alpine Vegetation Masks
- *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite), 2025-11-05 (v1.2.0 Vegetation)
+ *** Project:            HGT to PNG Heightmap Converter with multi-biome vegetation masks
+ *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite), 2025-11-05 (v1.2.0 Vegetation), 2025-11-21 (v1.3.0 Multi-biome)
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Professional conversion of SRTM HGT files to PNG displacement maps
- ***                     with Alpine vegetation mask generation for realistic 3D landscapes
+ ***                     with multi-biome vegetation masks (Alpine + Temperate) for realistic 3D landscapes
  *** Compile:            gcc hgt2png.c -o hgt2png -std=gnu99 $(pkg-config --cflags --libs libpng) -lm -pthread -fopenmp -mavx2 -O3
  *** Dependencies:       libpng-dev: sudo apt-get install libpng-dev pkg-config
  *** GitHub:             https://github.com/PeterEbel/hgt2png
@@ -39,6 +39,8 @@
  ***                                   const-correctness, memory safety, professional features
  *** 1.2.0   2025-11-05  Ebel          Alpine vegetation mask generation system with scientific
  ***                                   biome modeling, elevation/slope/aspect analysis
+ *** 1.3.0   2025-11-21  Ebel          Multi-biome system: Added Temperate biome for lowland/mid-elevation
+ ***                                   terrain (0-1500m), parabolic density distribution, deciduous forests
  **********************************************************************************
  */
 
@@ -162,12 +164,24 @@ typedef struct
 #define ALPINE_ASPECT_MODIFIER 0.2f  // South faces drier, North faces moister - reduced
 #define ALPINE_DRAINAGE_BONUS 0.3f   // Valley bottoms have more vegetation - reduced
 
+// Temperate Biome Configuration - Central European Lowlands/Mid-elevation
+#define TEMPERATE_MIN_ELEVATION 0.0f    // Vegetation starts at sea level
+#define TEMPERATE_MAX_ELEVATION 1500.0f // Vegetation typical up to ~1500m
+#define TEMPERATE_MAX_SLOPE 50.0f       // More tolerant of slopes than alpine
+#define TEMPERATE_TREE_LINE 1200.0f     // Deciduous/mixed forest limit (~1200m)
+#define TEMPERATE_BUSH_LINE 1400.0f     // Shrub/bush zone (1200-1400m)
+#define TEMPERATE_GRASS_LINE 1500.0f    // Grassland/meadow zone up to 1500m
+#define TEMPERATE_ASPECT_MODIFIER 0.15f // Less aspect influence in temperate zones
+#define TEMPERATE_DRAINAGE_BONUS 0.4f   // Strong drainage influence (wet lowlands)
+
 // Vegetation density calculation functions
 static float calculate_slope_angle(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, float pixel_pitch_meters);
 static float calculate_aspect_angle(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, float pixel_pitch_meters);
 static float calculate_drainage_factor(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, int radius);
 static uint8_t calculate_vegetation_density_alpine(float elevation, float slope, float aspect, float drainage, const VegetationParams *params);
+static uint8_t calculate_vegetation_density_temperate(float elevation, float slope, float aspect, float drainage, const VegetationParams *params);
 static void initialize_alpine_biome(VegetationParams *params);
+static void initialize_temperate_biome(VegetationParams *params);
 static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int16_t *elevation_data, const ProgramOptions *opts);
 
 typedef int errno_t;
@@ -1687,7 +1701,8 @@ static void initDefaultOptions(ProgramOptions *opts)
     opts->vegetation.enabled = 0;
     opts->biome = BIOME_ALPINE; // Default biome
 
-    // Initialize Alpine biome parameters (will be set if vegetation masks are enabled)
+    // Initialize default biome parameters (Alpine)
+    // Will be overridden if different biome is selected via CLI
     initialize_alpine_biome(&opts->vegetation);
     opts->vegetation.enabled = 0; // Override to disabled by default
 }
@@ -1745,9 +1760,9 @@ static void showHelp(const char *programName)
 // Show version
 static void showVersion(void)
 {
-    printf("hgt2png v1.2.0\n");
-    printf("Professional SRTM HGT to PNG Converter with Alpine Vegetation Masks\n");
-    printf("Features: OpenMP parallelization, procedural detail generation, vegetation biomes\n");
+    printf("hgt2png v1.3.0\n");
+    printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
+    printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
 }
 
@@ -1892,22 +1907,30 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
             if (strcmp(optarg, "alpine") == 0)
             {
                 opts->biome = BIOME_ALPINE;
+                initialize_alpine_biome(&opts->vegetation);
             }
             else if (strcmp(optarg, "temperate") == 0)
             {
                 opts->biome = BIOME_TEMPERATE;
+                initialize_temperate_biome(&opts->vegetation);
             }
             else if (strcmp(optarg, "tropical") == 0)
             {
                 opts->biome = BIOME_TROPICAL;
+                fprintf(stderr, "Warning: Tropical biome not yet implemented, using Alpine defaults\n");
+                initialize_alpine_biome(&opts->vegetation);
             }
             else if (strcmp(optarg, "desert") == 0)
             {
                 opts->biome = BIOME_DESERT;
+                fprintf(stderr, "Warning: Desert biome not yet implemented, using Alpine defaults\n");
+                initialize_alpine_biome(&opts->vegetation);
             }
             else if (strcmp(optarg, "arctic") == 0)
             {
                 opts->biome = BIOME_ARCTIC;
+                fprintf(stderr, "Warning: Arctic biome not yet implemented, using Alpine defaults\n");
+                initialize_alpine_biome(&opts->vegetation);
             }
             else
             {
@@ -2105,13 +2128,31 @@ static void initialize_alpine_biome(VegetationParams *params)
 {
     params->enabled = 1;
     params->minElevation = ALPINE_MIN_ELEVATION;     // 700m - montane forest zone
-    params->maxElevation = ALPINE_MAX_ELEVATION;     // 2000m - above tree line
-    params->maxSlope = ALPINE_MAX_SLOPE;             // 60° maximum for vegetation
+    params->maxElevation = ALPINE_MAX_ELEVATION;     // 2400m - above tree line
+    params->maxSlope = ALPINE_MAX_SLOPE;             // 45° maximum for vegetation
     params->treeLine = ALPINE_TREE_LINE;             // 1800m - spruce/larch limit
     params->bushLine = ALPINE_BUSH_LINE;             // 2200m - dwarf pine/rhododendron
-    params->grassLine = ALPINE_GRASS_LINE;           // 2500m - alpine meadows
-    params->aspectModifier = ALPINE_ASPECT_MODIFIER; // 0.3 - moderate aspect influence
-    params->drainageBonus = ALPINE_DRAINAGE_BONUS;   // 0.4 - valleys have more vegetation
+    params->grassLine = ALPINE_GRASS_LINE;           // 2400m - alpine meadows
+    params->aspectModifier = ALPINE_ASPECT_MODIFIER; // 0.2 - moderate aspect influence
+    params->drainageBonus = ALPINE_DRAINAGE_BONUS;   // 0.3 - valleys have more vegetation
+}
+
+/**
+ * Initialize Temperate biome parameters with realistic values
+ * Based on Central European lowlands and mid-elevation zones
+ * Typical regions: Germany, France, UK, Eastern USA, etc.
+ */
+static void initialize_temperate_biome(VegetationParams *params)
+{
+    params->enabled = 1;
+    params->minElevation = TEMPERATE_MIN_ELEVATION;     // 0m - sea level
+    params->maxElevation = TEMPERATE_MAX_ELEVATION;     // 1500m - upper limit
+    params->maxSlope = TEMPERATE_MAX_SLOPE;             // 50° maximum for vegetation
+    params->treeLine = TEMPERATE_TREE_LINE;             // 1200m - deciduous forest limit
+    params->bushLine = TEMPERATE_BUSH_LINE;             // 1400m - shrub zone
+    params->grassLine = TEMPERATE_GRASS_LINE;           // 1500m - grassland limit
+    params->aspectModifier = TEMPERATE_ASPECT_MODIFIER; // 0.15 - less aspect influence
+    params->drainageBonus = TEMPERATE_DRAINAGE_BONUS;   // 0.4 - strong drainage effect
 }
 
 /**
@@ -2323,6 +2364,108 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
 }
 
 /**
+ * Calculate vegetation density for Temperate biome (0-255 grayscale)
+ * Implements realistic temperate zone vegetation distribution patterns
+ * Suitable for: Central Europe, Eastern USA, UK, temperate Asia
+ */
+static uint8_t calculate_vegetation_density_temperate(float elevation, float slope, float aspect,
+                                                      float drainage, const VegetationParams *params)
+{
+    if (!params->enabled)
+        return 0;
+
+    // Base elevation factor - TEMPERATE DISTRIBUTION
+    // Temperate zones have dense vegetation at low elevations, decreasing with height
+    float elevation_factor = 0.0f;
+
+    if (elevation < params->minElevation)
+    {
+        elevation_factor = 0.0f; // Below sea level (rare)
+    }
+    else if (elevation <= params->treeLine)
+    {
+        // Lowland to mid-elevation forest zone (0-1200m) - very dense vegetation
+        // Peak density at mid-elevations (400-800m), slightly less at very low elevations
+        float range = params->treeLine - params->minElevation;
+        float position = (elevation - params->minElevation) / range;
+        
+        // Parabolic distribution: peak at 0.5 position (~600m)
+        float optimal_position = 0.5f;
+        float distance_from_optimal = fabsf(position - optimal_position);
+        elevation_factor = 0.95f - distance_from_optimal * 0.25f; // 70-95% density
+    }
+    else if (elevation <= params->bushLine)
+    {
+        // Transition zone (1200-1400m) - mixed forest/shrubs
+        float range = params->bushLine - params->treeLine;
+        float position = (elevation - params->treeLine) / range;
+        elevation_factor = 0.7f - position * 0.35f; // 70% down to 35% density
+    }
+    else if (elevation <= params->grassLine)
+    {
+        // High grassland zone (1400-1500m) - meadows and sparse vegetation
+        float range = params->grassLine - params->bushLine;
+        float position = (elevation - params->bushLine) / range;
+        elevation_factor = 0.35f - position * 0.25f; // 35% down to 10% density
+    }
+    else
+    {
+        elevation_factor = 0.0f; // Above temperate vegetation limit
+    }
+
+    // Slope factor - temperate vegetation more tolerant of slopes
+    float slope_factor = 1.0f;
+    if (slope > params->maxSlope)
+    {
+        slope_factor = 0.0f; // Too steep for vegetation
+    }
+    else if (slope > 30.0f)  // Start reducing at 30° (more tolerant than alpine)
+    {
+        // Gradual slope reduction: 30°-50° range
+        float slope_range = params->maxSlope - 30.0f;
+        float slope_excess = slope - 30.0f;
+        slope_factor = 1.0f - (slope_excess / slope_range) * 0.85f; // 85% reduction
+    }
+    else if (slope > 20.0f)  // Gentle slope reduction
+    {
+        // Very gentle reduction: 20°-30° range  
+        slope_factor = 1.0f - ((slope - 20.0f) / 10.0f) * 0.2f; // 20% reduction max
+    }
+
+    // Aspect factor - less important in temperate zones due to higher moisture
+    float aspect_factor = 1.0f;
+    if (aspect >= 135.0f && aspect <= 225.0f)
+    {
+        // South-facing slopes (135°-225°) - slightly drier
+        aspect_factor = 1.0f - params->aspectModifier * 0.8f;
+    }
+    else if (aspect >= 315.0f || aspect <= 45.0f)
+    {
+        // North-facing slopes (315°-45°) - slightly moister
+        aspect_factor = 1.0f + params->aspectModifier * 0.6f;
+    }
+
+    // Drainage factor - VERY important in temperate zones (wet lowlands vs dry ridges)
+    float drainage_factor = 1.0f + (drainage * params->drainageBonus);
+
+    // Combine all factors
+    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor;
+
+    // Apply minimum threshold - no vegetation below 5% density
+    if (final_density < 0.05f)
+        final_density = 0.0f;
+
+    // Clamp to 0-1 range
+    if (final_density < 0.0f)
+        final_density = 0.0f;
+    if (final_density > 1.0f)
+        final_density = 1.0f;
+
+    // Convert to 8-bit grayscale (0-255)
+    return (uint8_t)(final_density * 255.0f);
+}
+
+/**
  * Generate vegetation mask PNG from heightmap data
  * Creates grayscale PNG where brightness represents vegetation density
  */
@@ -2467,7 +2610,11 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                     vegetation_density = calculate_vegetation_density_alpine(
                         (float)elevation, slope, aspect, drainage, &opts->vegetation);
                     break;
-                // TODO: Add other biomes (temperate, tropical, desert, arctic)
+                case BIOME_TEMPERATE:
+                    vegetation_density = calculate_vegetation_density_temperate(
+                        (float)elevation, slope, aspect, drainage, &opts->vegetation);
+                    break;
+                // TODO: Add other biomes (tropical, desert, arctic)
                 default:
                     vegetation_density = calculate_vegetation_density_alpine(
                         (float)elevation, slope, aspect, drainage, &opts->vegetation);

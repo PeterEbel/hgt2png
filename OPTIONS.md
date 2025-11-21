@@ -1,4 +1,4 @@
-# 🔧 HGT2PNG v1.2.0 - Advanced Technical Reference
+# 🔧 HGT2PNG v1.3.0 - Advanced Technical Reference
 
 > **Note:** For basic usage and command options, see [README.md](README.md). This document covers advanced workflows and technical integration details.
 
@@ -101,8 +101,8 @@ import_heightmap_with_metadata("N49E004.hgt", "N49E004.json")
 
 #### Vegetation Mask Integration (NEW! 🌲)
 ```python
-def setup_alpine_vegetation_material(terrain_obj, heightmap_path, vegetation_mask_path):
-    """Create PBR material with vegetation mask mixing"""
+def setup_vegetation_material(terrain_obj, heightmap_path, vegetation_mask_path, biome_type="alpine"):
+    """Create PBR material with vegetation mask mixing for Alpine or Temperate biomes"""
     
     material = terrain_obj.data.materials[0]  # Assume heightmap material exists
     nodes = material.node_tree.nodes
@@ -118,9 +118,14 @@ def setup_alpine_vegetation_material(terrain_obj, heightmap_path, vegetation_mas
     rock_bsdf.inputs['Roughness'].default_value = 0.8
     rock_bsdf.location = (0, 200)
     
-    # Vegetation material
+    # Vegetation material (biome-specific colors)
     vegetation_bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
-    vegetation_bsdf.inputs['Base Color'].default_value = (0.1, 0.3, 0.1, 1.0)  # Forest green
+    if biome_type == "alpine":
+        # Alpine: Coniferous forest green
+        vegetation_bsdf.inputs['Base Color'].default_value = (0.1, 0.3, 0.1, 1.0)
+    elif biome_type == "temperate":
+        # Temperate: Deciduous forest green (brighter)
+        vegetation_bsdf.inputs['Base Color'].default_value = (0.2, 0.4, 0.15, 1.0)
     vegetation_bsdf.inputs['Roughness'].default_value = 0.9
     vegetation_bsdf.location = (0, -200)
     
@@ -134,8 +139,11 @@ def setup_alpine_vegetation_material(terrain_obj, heightmap_path, vegetation_mas
     output_node = nodes.get('Material Output')
     material.node_tree.links.new(mix_shader.outputs['Shader'], output_node.inputs['Surface'])
 
-# Usage with vegetation masks
-setup_alpine_vegetation_material(terrain_obj, "N49E004.png", "N49E004_vegetation_alpine.png")
+# Usage with Alpine biome (mountains)
+setup_vegetation_material(terrain_obj, "N46E007.png", "N46E007_vegetation_alpine.png", "alpine")
+
+# Usage with Temperate biome (lowlands)
+setup_vegetation_material(terrain_obj, "N49E004.png", "N49E004_vegetation_temperate.png", "temperate")
 ```
 
 ### Unity Engine Integration
@@ -220,8 +228,8 @@ public class HGT2PNGImporter : MonoBehaviour
         return terrainData;
     }
     
-    // Create terrain with vegetation mask
-    public static void SetupAlpineVegetation(Terrain terrain, string vegetationMaskPath)
+    // Create terrain with vegetation mask (Alpine or Temperate)
+    public static void SetupVegetationMaterial(Terrain terrain, string vegetationMaskPath, string biomeType = "alpine")
     {
         Texture2D vegetationMask = AssetDatabase.LoadAssetAtPath<Texture2D>(vegetationMaskPath);
         
@@ -231,8 +239,18 @@ public class HGT2PNGImporter : MonoBehaviour
         rockLayer.normalMapTexture = Resources.Load<Texture2D>("Textures/Rock_Normal");
         
         TerrainLayer vegetationLayer = new TerrainLayer();
-        vegetationLayer.diffuseTexture = Resources.Load<Texture2D>("Textures/Grass_Diffuse");
-        vegetationLayer.normalMapTexture = Resources.Load<Texture2D>("Textures/Grass_Normal");
+        if (biomeType == "alpine")
+        {
+            // Alpine: Coniferous forest textures
+            vegetationLayer.diffuseTexture = Resources.Load<Texture2D>("Textures/Coniferous_Diffuse");
+            vegetationLayer.normalMapTexture = Resources.Load<Texture2D>("Textures/Coniferous_Normal");
+        }
+        else if (biomeType == "temperate")
+        {
+            // Temperate: Deciduous forest textures
+            vegetationLayer.diffuseTexture = Resources.Load<Texture2D>("Textures/Deciduous_Diffuse");
+            vegetationLayer.normalMapTexture = Resources.Load<Texture2D>("Textures/Deciduous_Normal");
+        }
         
         terrain.terrainData.terrainLayers = new TerrainLayer[] { rockLayer, vegetationLayer };
         
@@ -359,7 +377,7 @@ private:
   },
   
   "vegetation_info": {
-    "biome_type": "alpine",
+    "biome_type": "alpine",  // or "temperate"
     "enabled": true,
     "parameters": {
       "min_elevation": 700.0,
@@ -384,10 +402,15 @@ private:
 
 ### Hollywood VFX Pipeline
 ```bash
-# Ultra-high quality for film production
+# Ultra-high quality for film production (Alpine mountains)
 ./hgt2png --16bit --alpha-nodata --vegetation-mask --biome alpine \
           --scale-factor 4 --detail-intensity 8.0 --gamma 1.0 \
           --metadata json --threads 16 terrain.hgt
+
+# Temperate lowland terrain for establishing shots
+./hgt2png --16bit --alpha-nodata --vegetation-mask --biome temperate \
+          --scale-factor 4 --detail-intensity 8.0 --gamma 1.0 \
+          --metadata json --threads 16 lowlands.hgt
 
 # Batch process for large territories  
 find /srtm_data -name "*.hgt" | parallel -j 4 \
@@ -396,9 +419,13 @@ find /srtm_data -name "*.hgt" | parallel -j 4 \
 
 ### Game Development AAA Pipeline
 ```bash
-# Optimized for real-time engines
+# Optimized for real-time engines (Alpine)
 ./hgt2png --scale-factor 2 --detail-intensity 18.0 --alpha-nodata \
-          --vegetation-mask --biome alpine --metadata json terrain.hgt
+          --vegetation-mask --biome alpine --metadata json mountains.hgt
+
+# Optimized for real-time engines (Temperate)
+./hgt2png --scale-factor 2 --detail-intensity 18.0 --alpha-nodata \
+          --vegetation-mask --biome temperate --metadata json plains.hgt
 
 # Generate LOD versions
 ./hgt2png --scale-factor 1 --disable-detail --quiet terrain.hgt  # LOD0 (distant)
@@ -411,8 +438,13 @@ mv terrain.png terrain_lod0.png
 ./hgt2png --16bit --disable-detail --curve linear --gamma 1.0 \
           --min-height 0 --max-height 4000 --metadata json terrain.hgt
 
-# Generate analysis masks
-./hgt2png --vegetation-mask --biome alpine --metadata json terrain.hgt
+# Generate analysis masks for different biomes
+./hgt2png --vegetation-mask --biome alpine --metadata json mountains.hgt
+./hgt2png --vegetation-mask --biome temperate --metadata json lowlands.hgt
+
+# Compare vegetation distribution across biomes
+./hgt2png --vegetation-mask --biome alpine N46E007.hgt    # Alps
+./hgt2png --vegetation-mask --biome temperate N49E004.hgt # Central Europe
 ```
 
 ---

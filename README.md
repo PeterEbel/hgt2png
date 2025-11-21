@@ -1,7 +1,7 @@
 
-# HGT2PNG v1.2.0 - Professional SRTM Terrain Converter
+# HGT2PNG v1.3.0 - Professional SRTM Terrain Converter
 
-High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation, **Alpine vegetation mask generation**, and professional 3D workflow integration.
+High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation, **multi-biome vegetation mask generation** (Alpine + Temperate), and professional 3D workflow integration.
 
 [![Performance](https://img.shields.io/badge/Performance-6x_faster-green.svg)](##performance)
 [![OpenMP](https://img.shields.io/badge/OpenMP-Optimized-blue.svg)](#features)
@@ -33,10 +33,10 @@ High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG di
 - **Progress Tracking**: Real-time progress indication for large-scale processing
 
 ### 🌲 **Vegetation Mask Generation**
-- **Alpine Biome System**: Scientifically accurate vegetation distribution based on elevation, slope, and aspect
-- **Realistic Parameters**: Tree line (1800m), bush line (2200m), grass line (2400m), max slope (45°)
+- **Multi-Biome System**: Alpine (700-2400m) and Temperate (0-1500m) biomes with scientifically accurate vegetation distribution
+- **Realistic Parameters**: Elevation-based tree/bush/grass lines, slope tolerance, aspect effects
 - **Grayscale Masks**: 0-255 density values for Blender material mixing and procedural landscapes
-- **Geographic Accuracy**: North/south slope effects, valley drainage patterns, elevation zones
+- **Geographic Accuracy**: North/south slope effects, valley drainage patterns, elevation-dependent density curves
 
 ## 📊 Performance Comparison
 
@@ -135,17 +135,21 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 
 ### Vegetation Mask Generation (NEW! 🌲)
 ```bash
-# Alpine vegetation masks for mountain terrain
+# Alpine vegetation masks for mountain terrain (700-2400m)
 ./hgt2png --vegetation-mask --biome alpine N46E007.hgt
 # → Creates N46E007.png + N46E007_vegetation_alpine.png
 
-# Combined heightmap + vegetation mask
+# Temperate vegetation masks for lowland/mid-elevation terrain (0-1500m)
+./hgt2png --vegetation-mask --biome temperate N49E004.hgt
+# → Creates N49E004.png + N49E004_vegetation_temperate.png
+
+# Combined heightmap + vegetation mask + metadata
 ./hgt2png --16bit --vegetation-mask --biome alpine --metadata json terrain.hgt
 # → terrain.png (displacement) + terrain_vegetation_alpine.png (vegetation density)
 
 # Blender-ready workflow: heightmap + vegetation + metadata
-./hgt2png --16bit --alpha-nodata --vegetation-mask --biome alpine \
-          --metadata json --scale-factor 3 mountains.hgt
+./hgt2png --16bit --alpha-nodata --vegetation-mask --biome temperate \
+          --metadata json --scale-factor 3 lowlands.hgt
 ```
 
 ## 📖 Documentation
@@ -239,8 +243,24 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 
 ## 🌲 Vegetation Masks
 
-### Alpine Biome System
-The Alpine vegetation mask generator creates scientifically accurate vegetation distribution maps based on real-world ecological parameters:
+HGT2PNG generates scientifically accurate vegetation distribution masks for realistic landscape rendering. Choose the biome that matches your terrain's elevation range.
+
+### Biome Comparison
+
+| Feature | Alpine Biome | Temperate Biome |
+|---------|--------------|-----------------|
+| **Elevation Range** | 700-2400m | 0-1500m |
+| **Target Terrain** | Mountain landscapes, high-altitude regions | Lowlands, mid-elevation hills, Central Europe |
+| **Max Slope** | 45° | 50° |
+| **Density Distribution** | Linear decrease with elevation | Parabolic (peaks at ~600m) |
+| **Tree Line** | 1800m | 1200m |
+| **Bush Line** | 2200m | 1400m |
+| **Grass Line** | 2400m | 1500m |
+| **Aspect Influence** | Strong (0.2) | Moderate (0.15) |
+| **Drainage Bonus** | Moderate (0.3) | Strong (0.4) |
+
+### Alpine Biome System (700-2400m)
+Perfect for mountain terrain, high-altitude regions, and alpine landscapes.
 
 #### Elevation Zones
 - **Montane Forest** (700-1800m): Dense coniferous forests (spruce, fir, larch)
@@ -254,11 +274,35 @@ The Alpine vegetation mask generator creates scientifically accurate vegetation 
 - **Drainage Patterns**: Valley bottoms support more vegetation than exposed ridges
 - **Gradual Transitions**: Realistic density gradients between zones
 
-#### Blender Integration
+### Temperate Biome System (0-1500m)
+Ideal for lowland terrain, mid-elevation hills, and Central European landscapes.
+
+#### Elevation Zones
+- **Lowland Forest** (0-600m): Dense deciduous/mixed forests (oak, beech, maple) - **maximum density**
+- **Mid-Elevation Forest** (600-1200m): Transition to coniferous forests with decreasing density
+- **Montane Forest** (1200-1400m): Sparse high-elevation forests and shrubland
+- **Subalpine Meadows** (1400-1500m): Grass and low vegetation
+- **Alpine Zone** (>1500m): No temperate vegetation (use Alpine biome instead)
+
+#### Environmental Factors
+- **Slope Tolerance**: Maximum 50° (higher than Alpine due to lowland terrain stability)
+- **Aspect Effects**: Moderate influence (0.15) - less pronounced than Alpine
+- **Drainage Bonus**: Strong effect (0.4) - lowland rivers and valleys very fertile
+- **Parabolic Distribution**: Vegetation density peaks at ~600m elevation, gradually decreasing above and below
+
+### Blender Integration
 ```glsl
 // Use vegetation mask as Mix Factor in Shader Editor
 vegetationDensity = texture(vegetation_mask, uv).r;
 finalColor = mix(rockMaterial, vegetationMaterial, vegetationDensity);
+
+// Example: Alpine terrain with snow above tree line
+alpineDensity = texture(alpine_vegetation_mask, uv).r;
+finalColor = mix(snowMaterial, mix(rockMaterial, forestMaterial, alpineDensity), alpineDensity);
+
+// Example: Temperate lowlands with rivers
+temperateDensity = texture(temperate_vegetation_mask, uv).r;
+finalColor = mix(grassMaterial, mix(soilMaterial, forestMaterial, temperateDensity), temperateDensity);
 ```
 
 ## 📊 System Requirements
