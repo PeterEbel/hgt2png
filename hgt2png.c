@@ -381,7 +381,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.2.0 (C) 2025 - with Procedural Detail Generation and Alpine Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.3.0 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
     }
@@ -1710,7 +1710,7 @@ static void initDefaultOptions(ProgramOptions *opts)
 // Show help text
 static void showHelp(const char *programName)
 {
-    printf("hgt2png v1.2.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Alpine Vegetation Masks\n\n");
+    printf("hgt2png v1.3.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
 
