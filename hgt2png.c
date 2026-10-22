@@ -134,6 +134,7 @@ typedef struct
     int alphaNoData;               // Option for transparent NoData pixels
     VegetationParams vegetation;   // Vegetation mask parameters
     BiomeType biome;               // Selected biome type
+    size_t removeIslands;          // Min. island size in source pixels (0 = disabled)
 } ProgramOptions;
 
 // Threading structures for parallelization
@@ -310,6 +311,7 @@ static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float
 static int extractGeoBounds(const char *filename, float *south, float *north, float *west, float *east);
 static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opts, const struct tag_FileInfoSRTM *fi, int effectiveMinHeight, int effectiveMaxHeight);
 static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight, int scaleFactor, float detailIntensity, int seed, int srtmType);
+static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands);
 
 // Functions for parallelization
 static void *processFileWorker(void *arg);
@@ -877,6 +879,25 @@ static void *processFileWorker(void *arg)
         fprintf(stderr, "INFO: Found %d NoData values in %s\n", threadNoDataCount, fi->szFilename);
     }
     pthread_mutex_unlock(data->outputMutex);
+
+    if (opts->removeIslands > 0)
+    {
+        size_t removedIslands = 0;
+        int islandResult = removeSmallIslands((int16_t *)iElevationData, fi->iWidth, fi->iHeight,
+                                              opts->removeIslands, &removedIslands);
+
+        pthread_mutex_lock(data->outputMutex);
+        if (islandResult != 0)
+        {
+            fprintf(stderr, "WARNING: Island removal skipped for %s (allocation failed)\n", fi->szFilename);
+        }
+        else if (opts->verbose)
+        {
+            fprintf(stderr, "INFO: Removed %zu islands smaller than %zu pixels in %s\n",
+                    removedIslands, opts->removeIslands, fi->szFilename);
+        }
+        pthread_mutex_unlock(data->outputMutex);
+    }
 
     // PROCEDURAL DETAIL GENERATION
     if (opts->enableDetail)
@@ -1592,6 +1613,90 @@ static short int *AddProceduralDetail(const short int *originalData, int origina
 
 // HELPER FUNCTIONS
 
+// Zeroes 8-connected land components (> 0 m) smaller than minPixels; components touching the tile border are kept.
+static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands)
+{
+    size_t pixelCount;
+    *removedIslands = 0;
+
+    if (!safe_multiply_size_t(width, height, &pixelCount) || pixelCount > UINT32_MAX)
+    {
+        return -1;
+    }
+
+    uint8_t *visited = (uint8_t *)calloc(pixelCount, sizeof(uint8_t));
+    uint32_t *queue = (uint32_t *)safe_malloc_pixels(width, height, sizeof(uint32_t));
+    if (visited == NULL || queue == NULL)
+    {
+        free(visited);
+        free(queue);
+        return -1;
+    }
+
+    for (size_t start = 0; start < pixelCount; start++)
+    {
+        if (visited[start] || data[start] <= 0)
+        {
+            continue;
+        }
+
+        size_t head = 0;
+        size_t tail = 0;
+        int touchesBorder = 0;
+
+        queue[tail++] = (uint32_t)start;
+        visited[start] = 1;
+
+        while (head < tail)
+        {
+            size_t idx = queue[head++];
+            size_t x = idx % width;
+            size_t y = idx / width;
+
+            if (x == 0 || y == 0 || x == width - 1 || y == height - 1)
+            {
+                touchesBorder = 1;
+            }
+
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    // Unsigned wrap-around turns negative coordinates into values >= width/height
+                    size_t nx = x + (size_t)dx;
+                    size_t ny = y + (size_t)dy;
+                    if ((dx == 0 && dy == 0) || nx >= width || ny >= height)
+                    {
+                        continue;
+                    }
+
+                    size_t nidx = ny * width + nx;
+                    if (visited[nidx] || data[nidx] <= 0)
+                    {
+                        continue;
+                    }
+
+                    visited[nidx] = 1;
+                    queue[tail++] = (uint32_t)nidx;
+                }
+            }
+        }
+
+        if (tail < minPixels && !touchesBorder)
+        {
+            for (size_t i = 0; i < tail; i++)
+            {
+                data[queue[i]] = 0;
+            }
+            (*removedIslands)++;
+        }
+    }
+
+    free(visited);
+    free(queue);
+    return 0;
+}
+
 // Extracts filename from path and generates PNG name in current directory
 static void generateOutputFilename(const char *inputPath, char *outputPath)
 {
@@ -1684,6 +1789,7 @@ static void initDefaultOptions(ProgramOptions *opts)
     opts->maxHeight = -1;                   // Auto-detection
     opts->metadataFormat = METADATA_NONE;   // Default: No metadata
     opts->alphaNoData = 0;                  // Default: No transparent NoData pixels
+    opts->removeIslands = 0;                // Default: Island removal disabled
 
     // Initialize vegetation mask parameters (disabled by default)
     opts->vegetation.enabled = 0;
@@ -1723,6 +1829,8 @@ static void showHelp(const char *programName)
     printf("  -V, --vegetation-mask    Generate vegetation density mask PNG (grayscale 0-255)\n");
     printf("  -B, --biome <type>       Select biome type: alpine|temperate|tropical|desert|arctic\n");
     printf("                           (default: alpine, only used with --vegetation-mask)\n");
+    printf("      --remove-islands <n> Remove isolated land patches smaller than <n> source pixels\n");
+    printf("                           (default: off, patches touching the tile border are kept)\n");
     printf("  -h, --help               Show this help message\n");
     printf("  -v, --version            Show version information\n\n");
 
@@ -1774,6 +1882,7 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
         {"metadata", required_argument, 0, 'x'},
         {"vegetation-mask", no_argument, 0, 'V'},
         {"biome", required_argument, 0, 'B'},
+        {"remove-islands", required_argument, 0, 'I'},
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'v'},
         {0, 0, 0, 0}};
@@ -1926,6 +2035,18 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
                 return 1;
             }
             break;
+
+        case 'I':
+        {
+            long minPixels = atol(optarg);
+            if (minPixels < 1 || minPixels > 100000000L)
+            {
+                fprintf(stderr, "Error: remove-islands must be between 1 and 100000000 pixels\n");
+                return 1;
+            }
+            opts->removeIslands = (size_t)minPixels;
+            break;
+        }
 
         case 'h':
             opts->showHelp = 1;
