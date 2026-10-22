@@ -1,4 +1,4 @@
-# 🔧 HGT2PNG v1.4.0 - Advanced Technical Reference
+# 🔧 HGT2PNG v1.4.1 - Advanced Technical Reference
 
 > **Note:** For basic usage and command options, see [README.md](README.md). This document covers advanced workflows and technical integration details.
 
@@ -47,6 +47,7 @@ SRTM tiles with sea areas can contain isolated spikes and rock patches in the wa
 - **Tile border:** Components touching the tile border are always kept, since they may continue in the neighbouring tile.
 - **Inland NoData voids:** Voids are `0` values enclosed by land. They belong to no island and are not touched.
 - **Real islands:** Genuine small islands below the threshold are removed as well, so choose `<n>` conservatively.
+- **Detail generation:** With `--remove-islands`, procedural noise is skipped where all four source samples of a pixel are at or below 0 m. Without this, noise on the open sea would create new phantom islands after the removal step. Coastlines and land are unaffected.
 - **Range:** `1` to `100000000`. Default: disabled; output is then identical to previous versions.
 - **Memory:** about 5 bytes per source pixel (visited mask + queue), freed after processing.
 
