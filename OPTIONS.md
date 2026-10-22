@@ -1,4 +1,4 @@
-# 🔧 HGT2PNG v1.3.0 - Advanced Technical Reference
+# 🔧 HGT2PNG v1.4.0 - Advanced Technical Reference
 
 > **Note:** For basic usage and command options, see [README.md](README.md). This document covers advanced workflows and technical integration details.
 
@@ -28,6 +28,32 @@ final_detail = detail_height * slope_factor;         // Less detail on steep slo
 - **`detail-intensity 5-10`**: Realistic erosion patterns
 - **`detail-intensity 15-25`**: Enhanced landscape features  
 - **`detail-intensity 30+`**: Fantasy/artistic terrain
+
+### Island Removal (`--remove-islands <n>`)
+
+SRTM tiles with sea areas can contain isolated spikes and rock patches in the water. `--remove-islands` removes them before detail generation:
+
+1. Elevation data is normalized (endian, NoData → 0, clamping).
+2. All land pixels (`> 0 m`) are grouped into 8-connected components.
+3. Components smaller than `<n>` source pixels are set to `0`.
+
+```bash
+# Remove isolated patches up to 100 source pixels (~0.8 km² on SRTM-3)
+./hgt2png --remove-islands 100 --alpha-nodata --16bit N43W005.hgt
+```
+
+**Behavior:**
+- **Unit:** `<n>` counts pixels of the original tile, independent of `--scale-factor`.
+- **Tile border:** Components touching the tile border are always kept, since they may continue in the neighbouring tile.
+- **Inland NoData voids:** Voids are `0` values enclosed by land. They belong to no island and are not touched.
+- **Real islands:** Genuine small islands below the threshold are removed as well, so choose `<n>` conservatively.
+- **Range:** `1` to `100000000`. Default: disabled; output is then identical to previous versions.
+- **Memory:** about 5 bytes per source pixel (visited mask + queue), freed after processing.
+
+**Parameter Guidelines:**
+- **`remove-islands 10-50`**: Single-pixel artifacts and tiny spikes
+- **`remove-islands 100-1000`**: Small rock patches in the sea
+- **`remove-islands 5000+`**: May remove real islands, check the result
 
 ---
 
