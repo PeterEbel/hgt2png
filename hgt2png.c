@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.4.0
+ * HGT2PNG - Professional Heightmap Converter v1.4.1
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -43,6 +43,8 @@
  ***                                   terrain (0-1500m), parabolic density distribution, deciduous forests
  *** 1.4.0   2026-10-22  Ebel          --remove-islands: removes isolated land patches in the sea,
  ***                                   elevation normalization now runs before detail generation
+ *** 1.4.1   2026-10-22  Ebel          --remove-islands also keeps open sea flat during detail generation
+ ***                                   (procedural noise created phantom islands in the sea)
  **********************************************************************************
  */
 
@@ -312,7 +314,7 @@ static float GetHeightTypeFactor(short int height);
 static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
 static int extractGeoBounds(const char *filename, float *south, float *north, float *west, float *east);
 static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opts, const struct tag_FileInfoSRTM *fi, int effectiveMinHeight, int effectiveMaxHeight);
-static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight, int scaleFactor, float detailIntensity, int seed, int srtmType);
+static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight, int scaleFactor, float detailIntensity, int seed, int srtmType, int flatSea);
 static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands);
 
 // Functions for parallelization
@@ -385,7 +387,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.4.0 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.4.1 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
     }
@@ -906,7 +908,8 @@ static void *processFileWorker(void *arg)
     {
         // Add procedural detail
         short int *detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight,
-                                                      opts->scaleFactor, opts->detailIntensity, opts->noiseSeed, fi->srtmType);
+                                                      opts->scaleFactor, opts->detailIntensity, opts->noiseSeed, fi->srtmType,
+                                                      opts->removeIslands > 0);
 
         if (detailedData)
         {
@@ -1521,9 +1524,30 @@ static int extractGeoBounds(const char *filename, float *south, float *north, fl
     return 1;
 }
 
+// True if all four bilinear source samples are at or below sea level
+static int IsFlatSea(const short int *data, int width, int height, float x, float y)
+{
+    int x1 = (int)x;
+    int y1 = (int)y;
+    int x2 = x1 + 1;
+    int y2 = y1 + 1;
+
+    if (x2 >= width)
+        x2 = width - 1;
+    if (y2 >= height)
+        y2 = height - 1;
+    if (x1 < 0)
+        x1 = 0;
+    if (y1 < 0)
+        y1 = 0;
+
+    return data[y1 * width + x1] <= 0 && data[y1 * width + x2] <= 0 &&
+           data[y2 * width + x1] <= 0 && data[y2 * width + x2] <= 0;
+}
+
 // Main function for Procedural Detail Generation
 static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight,
-                                      int scaleFactor, float detailIntensity, int seed, int srtmType)
+                                      int scaleFactor, float detailIntensity, int seed, int srtmType, int flatSea)
 {
 
     size_t newWidth, newHeight;
@@ -1595,6 +1619,12 @@ static short int *AddProceduralDetail(const short int *originalData, int origina
 
             // Calculate final detail with sub-pixel precision
             float detailVariation = combinedNoise * detailIntensity * slopeMultiplier * heightFactor;
+
+            // Noise on open sea would create phantom islands
+            if (flatSea && IsFlatSea(originalData, originalWidth, originalHeight, srcX, srcY))
+            {
+                detailVariation = 0.0f;
+            }
 
             // Maintain float precision for final height (against terracing)
             float finalHeight = (float)baseHeight + detailVariation;
@@ -1806,7 +1836,7 @@ static void initDefaultOptions(ProgramOptions *opts)
 // Show help text
 static void showHelp(const char *programName)
 {
-    printf("hgt2png v1.4.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
+    printf("hgt2png v1.4.1 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
 
@@ -1832,7 +1862,8 @@ static void showHelp(const char *programName)
     printf("  -B, --biome <type>       Select biome type: alpine|temperate|tropical|desert|arctic\n");
     printf("                           (default: alpine, only used with --vegetation-mask)\n");
     printf("      --remove-islands <n> Remove isolated land patches smaller than <n> source pixels\n");
-    printf("                           (default: off, patches touching the tile border are kept)\n");
+    printf("                           (default: off, patches touching the tile border are kept;\n");
+    printf("                           also keeps open sea flat during detail generation)\n");
     printf("  -h, --help               Show this help message\n");
     printf("  -v, --version            Show version information\n\n");
 
@@ -1858,7 +1889,7 @@ static void showHelp(const char *programName)
 // Show version
 static void showVersion(void)
 {
-    printf("hgt2png v1.4.0\n");
+    printf("hgt2png v1.4.1\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
     printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
