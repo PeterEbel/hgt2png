@@ -862,25 +862,25 @@ static void *processFileWorker(void *arg)
     }
     fclose(InFile);
 
+    // Endian conversion, NoData replacement and clamping must precede island removal and detail generation
+    int threadNoDataCount = 0;
+    for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++)
+    {
+        iElevationData[pre] = processElevationValue(iElevationData[pre], fi->srtmType, &threadNoDataCount);
+    }
+
+    // Update NoData statistics thread-safely
+    pthread_mutex_lock(data->outputMutex);
+    fi->noDataCount += threadNoDataCount;
+    if (opts->verbose && threadNoDataCount > 0)
+    {
+        fprintf(stderr, "INFO: Found %d NoData values in %s\n", threadNoDataCount, fi->szFilename);
+    }
+    pthread_mutex_unlock(data->outputMutex);
+
     // PROCEDURAL DETAIL GENERATION
     if (opts->enableDetail)
     {
-        // NoData handling for worker thread
-        int threadNoDataCount = 0;
-        for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++)
-        {
-            iElevationData[pre] = processElevationValue(iElevationData[pre], fi->srtmType, &threadNoDataCount);
-        }
-
-        // Update NoData statistics thread-safely
-        pthread_mutex_lock(data->outputMutex);
-        fi->noDataCount += threadNoDataCount;
-        if (opts->verbose && threadNoDataCount > 0)
-        {
-            fprintf(stderr, "INFO: Found %d NoData values in %s\n", threadNoDataCount, fi->szFilename);
-        }
-        pthread_mutex_unlock(data->outputMutex);
-
         // Add procedural detail
         short int *detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight,
                                                       opts->scaleFactor, opts->detailIntensity, opts->noiseSeed, fi->srtmType);
@@ -1020,18 +1020,9 @@ static void *processFileWorker(void *arg)
 
     // Convert elevation to pixels - depending on output format
     // OpenMP: SIMD vectorization for optimal performance with large images
-    int totalNoDataCount = 0; // Thread-safe aggregation for NoData counting
-#pragma omp parallel for simd aligned(iElevationData : 32) reduction(+ : totalNoDataCount) if (pixelCount > 10000)
+#pragma omp parallel for simd aligned(iElevationData : 32) if (pixelCount > 10000)
     for (unsigned long m = 0; m < pixelCount; m++)
     {
-        if (!opts->enableDetail)
-        {
-            // Correct NoData handling without detail generation
-            int threadNoDataCount = 0;
-            iElevationData[m] = processElevationValue(iElevationData[m], fi->srtmType, &threadNoDataCount);
-            totalNoDataCount += threadNoDataCount; // Thread-safe reduction
-        }
-
         // Check for NoData pixels (for alpha transparency)
         int isNoDataPixel = (iElevationData[m] == NODATA_REPLACEMENT);
 
@@ -1081,9 +1072,6 @@ static void *processFileWorker(void *arg)
             PixelData[m].r = PixelData[m].g = PixelData[m].b = pixelValue;
         }
     }
-
-    // Update NoData count after parallel processing
-    fi->noDataCount += totalNoDataCount;
 
     // Generate PNG output filename (filename only, not full path)
     generateOutputFilename(fi->szFilename, OutputHeightmapFile);
