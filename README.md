@@ -1,5 +1,5 @@
 
-# HGT2PNG v1.4.1 - Professional SRTM Terrain Converter
+# HGT2PNG v1.5.0 - Professional SRTM Terrain Converter
 
 High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation, **multi-biome vegetation mask generation** (Alpine + Temperate), and professional 3D workflow integration.
 
@@ -175,6 +175,8 @@ OMP_NUM_THREADS=8 ./hgt2png --scale-factor 4 *.hgt
 | `-x, --metadata <format>` | Export metadata (json\|txt) | `-x json` |
 | `-d, --disable-detail` | Original resolution only | `-d` |
 | `--remove-islands <n>` | Remove isolated land patches smaller than n source pixels | `--remove-islands 100` |
+| `--lat-aridity <list>` | Reduce vegetation by latitude (`<lat>:<0..1>,...`) | `--lat-aridity 43.5:0.1,36:0.9` |
+| `--aridity <f>` | Constant vegetation aridity (0..1) | `--aridity 0.5` |
 | **`-V, --vegetation-mask`** | **Generate vegetation density mask** | **`-V`** |
 | **`-B, --biome <type>`** | **Select biome (alpine\|temperate\|tropical)** | **`-B alpine`** |
 

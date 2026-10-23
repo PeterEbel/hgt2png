@@ -1,4 +1,4 @@
-# 🔧 HGT2PNG v1.4.1 - Advanced Technical Reference
+# 🔧 HGT2PNG v1.5.0 - Advanced Technical Reference
 
 > **Note:** For basic usage and command options, see [README.md](README.md). This document covers advanced workflows and technical integration details.
 
@@ -55,6 +55,29 @@ SRTM tiles with sea areas can contain isolated spikes and rock patches in the wa
 - **`remove-islands 10-50`**: Single-pixel artifacts and tiny spikes
 - **`remove-islands 100-1000`**: Small rock patches in the sea
 - **`remove-islands 5000+`**: May remove real islands, check the result
+
+### Latitude Aridity (`--lat-aridity <list>`, `--aridity <f>`)
+
+The vegetation mask normally depends on elevation, slope, aspect and drainage only. With aridity, the latitude of each pixel row also reduces vegetation, e.g. to contrast the humid north of the Iberian Peninsula with the dry south.
+
+```bash
+# Cantabria (humid) -> Meseta -> Andalusia (dry), one run per tile
+./hgt2png --vegetation-mask --biome temperate \
+          --lat-aridity 43.5:0.1,40:0.5,36:0.9 N40W006.hgt
+
+# Constant aridity, independent of latitude
+./hgt2png --vegetation-mask --aridity 0.6 N40W006.hgt
+```
+
+**Behavior:**
+- **Values:** `0` = humid (no effect), `1` = arid. `--lat-aridity` takes control points as `<lat>:<aridity>`, separated by commas, in any order. Latitudes must be unique (-90 to 90), at most 16 points.
+- **Interpolation:** Linear between the points, constant beyond the first and last point. The latitude is computed per pixel row from the tile name (`N40W006` = 40° to 41° N), so the curve is continuous across tile borders.
+- **Effect at aridity 1.0:** Tree, bush and grass line drop by 400 m and the overall density is scaled by 0.5. Values in between scale linearly.
+- **Combination:** `--aridity` replaces `--lat-aridity` and vice versa; the last one on the command line wins.
+- **Default:** Disabled; the mask is then identical to previous versions (`--aridity 0` gives the same result).
+- **Tile names:** The latitude is read from names like `N40W006.hgt`. Without a valid name, a warning is printed and aridity is ignored.
+- **Verification:** With verbose output, the mask step prints the latitude and aridity of the first and last row.
+- **Biomes:** Applies to the Alpine and Temperate curves. Tropical, desert and arctic currently use the Alpine curve and are affected accordingly.
 
 ---
 
