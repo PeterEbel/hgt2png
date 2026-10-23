@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.4.1
+ * HGT2PNG - Professional Heightmap Converter v1.5.0
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -23,7 +23,7 @@
  *
  *********************************************************************************
  *** Project:            HGT to PNG Heightmap Converter with multi-biome vegetation masks
- *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite), 2025-11-05 (v1.2.0 Vegetation), 2025-11-21 (v1.3.0 Multi-biome), 2026-10-22 (v1.4.0 Island removal)
+ *** Creation Date:      2016-01-01 (Original), 2025-10-27 (v1.1.0 Rewrite), 2025-11-05 (v1.2.0 Vegetation), 2025-11-21 (v1.3.0 Multi-biome), 2026-10-22 (v1.4.0 Island removal), 2026-10-23 (v1.5.0 Latitude aridity)
  *** Author:             Peter Ebel (peter.ebel@outlook.de)
  *** Objective:          Professional conversion of SRTM HGT files to PNG displacement maps
  ***                     with multi-biome vegetation masks (Alpine + Temperate) for realistic 3D landscapes
@@ -45,6 +45,9 @@
  ***                                   elevation normalization now runs before detail generation
  *** 1.4.1   2026-10-22  Ebel          --remove-islands also keeps open sea flat during detail generation
  ***                                   (procedural noise created phantom islands in the sea)
+ *** 1.5.0   2026-10-23  Ebel          --lat-aridity / --aridity: latitude-dependent vegetation masks
+ ***                                   (tree/bush/grass lines and density by latitude from the tile name);
+ ***                                   fixed corrupted vegetation masks with more than one thread
  **********************************************************************************
  */
 
@@ -404,7 +407,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.4.1 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.5.0 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
     }
@@ -1901,7 +1904,7 @@ static void initDefaultOptions(ProgramOptions *opts)
 // Show help text
 static void showHelp(const char *programName)
 {
-    printf("hgt2png v1.4.1 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
+    printf("hgt2png v1.5.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
 
@@ -1957,7 +1960,7 @@ static void showHelp(const char *programName)
 // Show version
 static void showVersion(void)
 {
-    printf("hgt2png v1.4.1\n");
+    printf("hgt2png v1.5.0\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
     printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
