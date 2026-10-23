@@ -2655,10 +2655,19 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
         pixel_pitch_meters = 30.0f; // SRTM-1
     }
 
+    // The whole mask is computed first so threads never share a PNG row buffer and rows are written in order
+    uint8_t *maskData = (uint8_t *)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(uint8_t));
+    if (!maskData)
+    {
+        fprintf(stderr, "ERROR: Cannot allocate vegetation mask buffer\n");
+        return -1;
+    }
+
     // Create PNG file
     FILE *fp = fopen(mask_filename, "wb");
     if (!fp)
     {
+        free(maskData);
         fprintf(stderr, "ERROR: Cannot create vegetation mask file %s\n", mask_filename);
         return -1;
     }
@@ -2666,6 +2675,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
     {
+        free(maskData);
         fclose(fp);
         fprintf(stderr, "ERROR: Cannot create PNG write structure\n");
         return -1;
@@ -2675,6 +2685,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     if (!info_ptr)
     {
         png_destroy_write_struct(&png_ptr, NULL);
+        free(maskData);
         fclose(fp);
         fprintf(stderr, "ERROR: Cannot create PNG info structure\n");
         return -1;
@@ -2683,6 +2694,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_write_struct(&png_ptr, &info_ptr);
+        free(maskData);
         fclose(fp);
         fprintf(stderr, "ERROR: PNG write error\n");
         return -1;
@@ -2696,16 +2708,6 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                  PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
     png_write_info(png_ptr, info_ptr);
-
-    // Allocate row buffer
-    png_bytep row = (png_bytep)malloc(fi->iWidth * sizeof(png_byte));
-    if (!row)
-    {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        fclose(fp);
-        fprintf(stderr, "ERROR: Cannot allocate PNG row buffer\n");
-        return -1;
-    }
 
     // Progress tracking
     size_t progress_step = fi->iHeight / 20; // Update every 5%
@@ -2764,13 +2766,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                 }
             }
 
-            row[x] = vegetation_density;
-        }
-
-// Write row to PNG (thread-safe)
-#pragma omp critical
-        {
-            png_write_row(png_ptr, row);
+            maskData[index] = vegetation_density;
         }
     }
 
@@ -2779,10 +2775,15 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
         fprintf(stderr, "\rProgress: 100%% \n");
     }
 
+    for (size_t y = 0; y < fi->iHeight; y++)
+    {
+        png_write_row(png_ptr, maskData + y * fi->iWidth);
+    }
+
     // Finalize PNG
     png_write_end(png_ptr, NULL);
     png_destroy_write_struct(&png_ptr, &info_ptr);
-    free(row);
+    free(maskData);
     fclose(fp);
 
     if (opts->verbose)
