@@ -1,4 +1,4 @@
-# 🔧 HGT2PNG v1.5.0 - Advanced Technical Reference
+# 🔧 HGT2PNG v1.5.1 - Advanced Technical Reference
 
 > **Note:** For basic usage and command options, see [README.md](README.md). This document covers advanced workflows and technical integration details.
 
@@ -72,7 +72,7 @@ The vegetation mask normally depends on elevation, slope, aspect and drainage on
 **Behavior:**
 - **Values:** `0` = humid (no effect), `1` = arid. `--lat-aridity` takes control points as `<lat>:<aridity>`, separated by commas, in any order. Latitudes must be unique (-90 to 90), at most 16 points.
 - **Interpolation:** Linear between the points, constant beyond the first and last point. The latitude is computed per pixel row from the tile name (`N40W006` = 40° to 41° N), so the curve is continuous across tile borders.
-- **Effect at aridity 1.0:** Tree, bush and grass line drop by 400 m and the overall density is scaled by 0.5. Values in between scale linearly.
+- **Effect at aridity 1.0:** Tree, bush and grass line drop by 400 m and the density is multiplied by 0.3 (`1 - 0.7 * aridity`). The factor is applied before the density is limited to its maximum, so relief structure (valleys, slopes) stays visible instead of being flattened to full density. Values in between scale linearly.
 - **Combination:** `--aridity` replaces `--lat-aridity` and vice versa; the last one on the command line wins.
 - **Default:** Disabled; the mask is then identical to previous versions (`--aridity 0` gives the same result).
 - **Tile names:** The latitude is read from names like `N40W006.hgt`. Without a valid name, a warning is printed and aridity is ignored.

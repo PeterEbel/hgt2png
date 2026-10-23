@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.5.0
+ * HGT2PNG - Professional Heightmap Converter v1.5.1
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -48,6 +48,8 @@
  *** 1.5.0   2026-10-23  Ebel          --lat-aridity / --aridity: latitude-dependent vegetation masks
  ***                                   (tree/bush/grass lines and density by latitude from the tile name);
  ***                                   fixed corrupted vegetation masks with more than one thread
+ *** 1.5.1   2026-10-23  Ebel          Aridity is applied before the density is clamped (keeps relief structure),
+ ***                                   density reduction raised to 0.7
  **********************************************************************************
  */
 
@@ -111,6 +113,7 @@ typedef struct
     float treeLine;       // Tree line elevation (meters)
     float bushLine;       // Bush line elevation (meters)
     float grassLine;      // Grass line elevation (meters)
+    float densityScale;   // Final density multiplier applied before clamping (1.0 = none)
 } VegetationParams;
 
 typedef enum
@@ -193,7 +196,7 @@ typedef struct
 #define TEMPERATE_DRAINAGE_BONUS 0.4f   // Strong drainage influence (wet lowlands)
 
 // Aridity effect at aridity 1.0 (initial values, to be calibrated visually)
-#define ARIDITY_DENSITY_REDUCTION 0.5f // Overall density is scaled by 1 - 0.5 * aridity
+#define ARIDITY_DENSITY_REDUCTION 0.7f // Density multiplier is 1 - 0.7 * aridity
 #define ARIDITY_LINE_SHIFT 400.0f      // Tree/bush/grass line drop in meters
 
 // Vegetation density calculation functions
@@ -332,7 +335,7 @@ static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float
 static int extractGeoBounds(const char *filename, float *south, float *north, float *west, float *east);
 static float latitudeAtRow(float south, float north, size_t row, size_t height);
 static float aridityAtLat(const AridityPoint *points, int count, float lat);
-static float applyAridity(VegetationParams *params, float aridity);
+static void applyAridity(VegetationParams *params, float aridity);
 static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opts, const struct tag_FileInfoSRTM *fi, int effectiveMinHeight, int effectiveMaxHeight);
 static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight, int scaleFactor, float detailIntensity, int seed, int srtmType, int flatSea);
 static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands);
@@ -407,7 +410,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.5.0 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.5.1 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
     }
@@ -1572,8 +1575,8 @@ static float aridityAtLat(const AridityPoint *points, int count, float lat)
     return points[count - 1].value;
 }
 
-// Lowers the vegetation lines in place and returns the density scale for the given aridity
-static float applyAridity(VegetationParams *params, float aridity)
+// Lowers the vegetation lines and sets the density multiplier in place for the given aridity
+static void applyAridity(VegetationParams *params, float aridity)
 {
     // Keep at least 100 m between the minimum elevation and the tree line
     float maxShift = params->treeLine - params->minElevation - 100.0f;
@@ -1588,7 +1591,7 @@ static float applyAridity(VegetationParams *params, float aridity)
     params->grassLine -= shift;
     params->maxElevation -= shift;
 
-    return 1.0f - ARIDITY_DENSITY_REDUCTION * aridity;
+    params->densityScale = 1.0f - ARIDITY_DENSITY_REDUCTION * aridity;
 }
 
 // True if all four bilinear source samples are at or below sea level
@@ -1904,7 +1907,7 @@ static void initDefaultOptions(ProgramOptions *opts)
 // Show help text
 static void showHelp(const char *programName)
 {
-    printf("hgt2png v1.5.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
+    printf("hgt2png v1.5.1 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
 
@@ -1960,7 +1963,7 @@ static void showHelp(const char *programName)
 // Show version
 static void showVersion(void)
 {
-    printf("hgt2png v1.5.0\n");
+    printf("hgt2png v1.5.1\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
     printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
@@ -2424,6 +2427,7 @@ static void initialize_alpine_biome(VegetationParams *params)
     params->grassLine = ALPINE_GRASS_LINE;           // 2400m - alpine meadows
     params->aspectModifier = ALPINE_ASPECT_MODIFIER; // 0.2 - moderate aspect influence
     params->drainageBonus = ALPINE_DRAINAGE_BONUS;   // 0.3 - valleys have more vegetation
+    params->densityScale = 1.0f;
 }
 
 /**
@@ -2442,6 +2446,7 @@ static void initialize_temperate_biome(VegetationParams *params)
     params->grassLine = TEMPERATE_GRASS_LINE;           // 1500m - grassland limit
     params->aspectModifier = TEMPERATE_ASPECT_MODIFIER; // 0.15 - less aspect influence
     params->drainageBonus = TEMPERATE_DRAINAGE_BONUS;   // 0.4 - strong drainage effect
+    params->densityScale = 1.0f;
 }
 
 /**
@@ -2636,7 +2641,7 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
     float drainage_factor = 1.0f + (drainage * params->drainageBonus);
 
     // Combine all factors - ADD MINIMUM THRESHOLD
-    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor;
+    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor * params->densityScale;
 
     // Apply minimum threshold - no vegetation below 5% density
     if (final_density < 0.05f)
@@ -2738,7 +2743,7 @@ static uint8_t calculate_vegetation_density_temperate(float elevation, float slo
     float drainage_factor = 1.0f + (drainage * params->drainageBonus);
 
     // Combine all factors
-    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor;
+    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor * params->densityScale;
 
     // Apply minimum threshold - no vegetation below 5% density
     if (final_density < 0.05f)
@@ -2901,12 +2906,11 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
 
         // Aridity depends only on the row, so the adjusted parameters are computed once per row
         VegetationParams rowParams = opts->vegetation;
-        float densityScale = 1.0f;
         if (useAridity)
         {
             float aridity = aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
                                          latitudeAtRow(tileSouth, tileNorth, y, fi->iHeight));
-            densityScale = applyAridity(&rowParams, aridity);
+            applyAridity(&rowParams, aridity);
         }
 
         // Process each pixel in row
@@ -2945,8 +2949,6 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                         (float)elevation, slope, aspect, drainage, &rowParams);
                     break;
                 }
-
-                vegetation_density = (uint8_t)((float)vegetation_density * densityScale);
             }
 
             maskData[index] = vegetation_density;
