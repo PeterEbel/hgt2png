@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.5.0
+ * HGT2PNG - Professional Heightmap Converter v1.5.1
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -48,6 +48,8 @@
  *** 1.5.0   2026-10-23  Ebel          --lat-aridity / --aridity: latitude-dependent vegetation masks
  ***                                   (tree/bush/grass lines and density by latitude from the tile name);
  ***                                   fixed corrupted vegetation masks with more than one thread
+ *** 1.5.1   2026-10-23  Ebel          Aridity is applied before the density is clamped (keeps relief structure),
+ ***                                   density reduction raised to 0.7
  **********************************************************************************
  */
 
@@ -408,7 +410,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.5.0 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.5.1 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
     }
@@ -1905,7 +1907,7 @@ static void initDefaultOptions(ProgramOptions *opts)
 // Show help text
 static void showHelp(const char *programName)
 {
-    printf("hgt2png v1.5.0 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
+    printf("hgt2png v1.5.1 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
 
@@ -1961,7 +1963,7 @@ static void showHelp(const char *programName)
 // Show version
 static void showVersion(void)
 {
-    printf("hgt2png v1.5.0\n");
+    printf("hgt2png v1.5.1\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
     printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
