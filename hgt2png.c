@@ -119,6 +119,14 @@ typedef enum
     BIOME_ARCTIC = 4
 } BiomeType;
 
+#define MAX_ARIDITY_POINTS 16
+
+typedef struct
+{
+    float lat;   // Latitude in degrees
+    float value; // Aridity 0 (humid) to 1 (arid)
+} AridityPoint;
+
 typedef struct
 {
     int scaleFactor;
@@ -139,6 +147,8 @@ typedef struct
     VegetationParams vegetation;   // Vegetation mask parameters
     BiomeType biome;               // Selected biome type
     size_t removeIslands;          // Min. island size in source pixels (0 = disabled)
+    AridityPoint aridityPoints[MAX_ARIDITY_POINTS]; // Control points sorted by latitude
+    int aridityPointCount;         // 0 = latitude aridity disabled
 } ProgramOptions;
 
 // Threading structures for parallelization
@@ -178,6 +188,10 @@ typedef struct
 #define TEMPERATE_GRASS_LINE 1500.0f    // Grassland/meadow zone up to 1500m
 #define TEMPERATE_ASPECT_MODIFIER 0.15f // Less aspect influence in temperate zones
 #define TEMPERATE_DRAINAGE_BONUS 0.4f   // Strong drainage influence (wet lowlands)
+
+// Aridity effect at aridity 1.0 (initial values, to be calibrated visually)
+#define ARIDITY_DENSITY_REDUCTION 0.5f // Overall density is scaled by 1 - 0.5 * aridity
+#define ARIDITY_LINE_SHIFT 400.0f      // Tree/bush/grass line drop in meters
 
 // Vegetation density calculation functions
 static float calculate_slope_angle(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, float pixel_pitch_meters);
@@ -313,6 +327,9 @@ static float CalculateLocalSlope(const short int *data, int width, int height, f
 static float GetHeightTypeFactor(short int height);
 static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
 static int extractGeoBounds(const char *filename, float *south, float *north, float *west, float *east);
+static float latitudeAtRow(float south, float north, size_t row, size_t height);
+static float aridityAtLat(const AridityPoint *points, int count, float lat);
+static float applyAridity(VegetationParams *params, float aridity);
 static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opts, const struct tag_FileInfoSRTM *fi, int effectiveMinHeight, int effectiveMaxHeight);
 static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight, int scaleFactor, float detailIntensity, int seed, int srtmType, int flatSea);
 static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands);
@@ -1524,6 +1541,53 @@ static int extractGeoBounds(const char *filename, float *south, float *north, fl
     return 1;
 }
 
+// HGT samples include both tile edges: row 0 is the north edge, the last row the south edge
+static float latitudeAtRow(float south, float north, size_t row, size_t height)
+{
+    if (height < 2)
+        return south;
+
+    return north - (north - south) * (float)row / (float)(height - 1);
+}
+
+// Points must be sorted by latitude with unique values; clamps to the end values outside their range
+static float aridityAtLat(const AridityPoint *points, int count, float lat)
+{
+    if (count <= 0)
+        return 0.0f;
+    if (lat <= points[0].lat)
+        return points[0].value;
+
+    for (int i = 1; i < count; i++)
+    {
+        if (lat <= points[i].lat)
+        {
+            float t = (lat - points[i - 1].lat) / (points[i].lat - points[i - 1].lat);
+            return points[i - 1].value + t * (points[i].value - points[i - 1].value);
+        }
+    }
+    return points[count - 1].value;
+}
+
+// Lowers the vegetation lines in place and returns the density scale for the given aridity
+static float applyAridity(VegetationParams *params, float aridity)
+{
+    // Keep at least 100 m between the minimum elevation and the tree line
+    float maxShift = params->treeLine - params->minElevation - 100.0f;
+    float shift = ARIDITY_LINE_SHIFT * aridity;
+    if (shift > maxShift)
+        shift = maxShift;
+    if (shift < 0.0f)
+        shift = 0.0f;
+
+    params->treeLine -= shift;
+    params->bushLine -= shift;
+    params->grassLine -= shift;
+    params->maxElevation -= shift;
+
+    return 1.0f - ARIDITY_DENSITY_REDUCTION * aridity;
+}
+
 // True if all four bilinear source samples are at or below sea level
 static int IsFlatSea(const short int *data, int width, int height, float x, float y)
 {
@@ -1822,6 +1886,7 @@ static void initDefaultOptions(ProgramOptions *opts)
     opts->metadataFormat = METADATA_NONE;   // Default: No metadata
     opts->alphaNoData = 0;                  // Default: No transparent NoData pixels
     opts->removeIslands = 0;                // Default: Island removal disabled
+    opts->aridityPointCount = 0;            // Default: No aridity influence
 
     // Initialize vegetation mask parameters (disabled by default)
     opts->vegetation.enabled = 0;
@@ -1864,6 +1929,9 @@ static void showHelp(const char *programName)
     printf("      --remove-islands <n> Remove isolated land patches smaller than <n> source pixels\n");
     printf("                           (default: off, patches touching the tile border are kept;\n");
     printf("                           also keeps open sea flat during detail generation)\n");
+    printf("      --lat-aridity <list> Aridity by latitude as <lat>:<0..1>,... (0=humid, 1=arid),\n");
+    printf("                           linearly interpolated, e.g. 43.5:0.1,40:0.5,36:0.9\n");
+    printf("      --aridity <f>        Constant aridity 0..1 (replaces --lat-aridity, last one wins)\n");
     printf("  -h, --help               Show this help message\n");
     printf("  -v, --version            Show version information\n\n");
 
@@ -1895,6 +1963,56 @@ static void showVersion(void)
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
 }
 
+// Parses "<lat>:<aridity>,..." into points sorted by latitude; returns -1 on any error without touching the output
+static int parseLatAridity(const char *arg, AridityPoint *points, int *count)
+{
+    AridityPoint tmp[MAX_ARIDITY_POINTS];
+    int n = 0;
+    const char *p = arg;
+
+    for (;;)
+    {
+        char *end;
+        double lat = strtod(p, &end);
+        if (end == p || *end != ':')
+            return -1;
+        p = end + 1;
+
+        double value = strtod(p, &end);
+        if (end == p)
+            return -1;
+        p = end;
+
+        if (!(lat >= -90.0 && lat <= 90.0) || !(value >= 0.0 && value <= 1.0) || n >= MAX_ARIDITY_POINTS)
+            return -1;
+
+        int i = n;
+        for (int k = 0; k < n; k++)
+        {
+            if (tmp[k].lat == (float)lat)
+                return -1;
+        }
+        while (i > 0 && tmp[i - 1].lat > (float)lat)
+        {
+            tmp[i] = tmp[i - 1];
+            i--;
+        }
+        tmp[i].lat = (float)lat;
+        tmp[i].value = (float)value;
+        n++;
+
+        if (*p == '\0')
+            break;
+        if (*p != ',')
+            return -1;
+        p++;
+    }
+
+    memcpy(points, tmp, (size_t)n * sizeof(AridityPoint));
+    *count = n;
+    return 0;
+}
+
 // Parse command line arguments
 static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile)
 {
@@ -1916,6 +2034,8 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
         {"vegetation-mask", no_argument, 0, 'V'},
         {"biome", required_argument, 0, 'B'},
         {"remove-islands", required_argument, 0, 'I'},
+        {"lat-aridity", required_argument, 0, 'L'},
+        {"aridity", required_argument, 0, 'Y'},
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'v'},
         {0, 0, 0, 0}};
@@ -2078,6 +2198,30 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
                 return 1;
             }
             opts->removeIslands = (size_t)minPixels;
+            break;
+        }
+
+        case 'L':
+            if (parseLatAridity(optarg, opts->aridityPoints, &opts->aridityPointCount) != 0)
+            {
+                fprintf(stderr, "Error: lat-aridity must be '<lat>:<aridity>,...' with lat -90..90, aridity 0..1, "
+                                "unique latitudes and at most %d points\n", MAX_ARIDITY_POINTS);
+                return 1;
+            }
+            break;
+
+        case 'Y':
+        {
+            char *end;
+            double aridity = strtod(optarg, &end);
+            if (end == optarg || *end != '\0' || !(aridity >= 0.0 && aridity <= 1.0))
+            {
+                fprintf(stderr, "Error: aridity must be a number between 0.0 and 1.0\n");
+                return 1;
+            }
+            opts->aridityPoints[0].lat = 0.0f;
+            opts->aridityPoints[0].value = (float)aridity;
+            opts->aridityPointCount = 1;
             break;
         }
 
@@ -2648,6 +2792,30 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                 biome_names[opts->biome], opts->vegetation.minElevation, opts->vegetation.maxElevation);
     }
 
+    float tileSouth = 0.0f, tileNorth = 0.0f, tileWest, tileEast;
+    int hasGeoBounds = extractGeoBounds(fi->szFilename, &tileSouth, &tileNorth, &tileWest, &tileEast);
+    int useAridity = opts->aridityPointCount > 0 && hasGeoBounds;
+
+    if (opts->aridityPointCount > 0 && !hasGeoBounds)
+    {
+        fprintf(stderr, "WARNING: Cannot derive latitude from filename %s, aridity ignored\n", fi->szFilename);
+    }
+
+    if (opts->verbose && hasGeoBounds)
+    {
+        fprintf(stderr, "INFO: Latitude range: %.4f (first row) to %.4f (last row)\n",
+                latitudeAtRow(tileSouth, tileNorth, 0, fi->iHeight),
+                latitudeAtRow(tileSouth, tileNorth, fi->iHeight - 1, fi->iHeight));
+        if (useAridity)
+        {
+            fprintf(stderr, "INFO: Aridity: %.3f (first row) to %.3f (last row)\n",
+                    aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
+                                 latitudeAtRow(tileSouth, tileNorth, 0, fi->iHeight)),
+                    aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
+                                 latitudeAtRow(tileSouth, tileNorth, fi->iHeight - 1, fi->iHeight)));
+        }
+    }
+
     // Determine pixel pitch for slope calculations
     float pixel_pitch_meters = 90.0f; // Default SRTM-3
     if (fi->srtmType == SRTM3)
@@ -2728,6 +2896,16 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
             }
         }
 
+        // Aridity depends only on the row, so the adjusted parameters are computed once per row
+        VegetationParams rowParams = opts->vegetation;
+        float densityScale = 1.0f;
+        if (useAridity)
+        {
+            float aridity = aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
+                                         latitudeAtRow(tileSouth, tileNorth, y, fi->iHeight));
+            densityScale = applyAridity(&rowParams, aridity);
+        }
+
         // Process each pixel in row
         for (size_t x = 0; x < fi->iWidth; x++)
         {
@@ -2752,18 +2930,20 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                 {
                 case BIOME_ALPINE:
                     vegetation_density = calculate_vegetation_density_alpine(
-                        (float)elevation, slope, aspect, drainage, &opts->vegetation);
+                        (float)elevation, slope, aspect, drainage, &rowParams);
                     break;
                 case BIOME_TEMPERATE:
                     vegetation_density = calculate_vegetation_density_temperate(
-                        (float)elevation, slope, aspect, drainage, &opts->vegetation);
+                        (float)elevation, slope, aspect, drainage, &rowParams);
                     break;
                 // TODO: Add other biomes (tropical, desert, arctic)
                 default:
                     vegetation_density = calculate_vegetation_density_alpine(
-                        (float)elevation, slope, aspect, drainage, &opts->vegetation);
+                        (float)elevation, slope, aspect, drainage, &rowParams);
                     break;
                 }
+
+                vegetation_density = (uint8_t)((float)vegetation_density * densityScale);
             }
 
             maskData[index] = vegetation_density;
