@@ -815,22 +815,53 @@ static void write_png_16bit_grayscale(const char *filename, size_t width, size_t
 
 static void write_png_16bit_with_alpha(const char *filename, size_t width, size_t height, const rgba16_t *pixel_data)
 {
-    png_image image;
-
-    memset(&image, 0, sizeof image);
-
-    image.version = PNG_IMAGE_VERSION;
-    image.format = PNG_FORMAT_LINEAR_Y_ALPHA; // 16-bit Grayscale + Alpha
-    image.width = width;
-    image.height = height;
-
+    // The simplified libpng API treats linear gray+alpha as premultiplied and writes 65535 under alpha 0
     fprintf(stderr, "Info: Writing 16-bit RGBA %s\n", filename);
-    if (!png_image_write_to_file(&image, filename, 0 /*convert_to_8bit*/, (png_bytep)pixel_data, 0 /*row_stride*/, NULL /*colormap*/))
+
+    FILE *fp = fopen(filename, "wb");
+    if (!fp)
     {
-        fprintf(stderr, "Error: Writing %s: %s\n", filename, image.message);
+        fprintf(stderr, "Error: Writing %s: cannot open file\n", filename);
+        return;
     }
 
-    png_image_free(&image);
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    png_infop info_ptr = png_ptr ? png_create_info_struct(png_ptr) : NULL;
+    if (!png_ptr || !info_ptr)
+    {
+        fprintf(stderr, "Error: Writing %s: cannot create PNG structures\n", filename);
+        if (png_ptr)
+            png_destroy_write_struct(&png_ptr, NULL);
+        fclose(fp);
+        return;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr)))
+    {
+        fprintf(stderr, "Error: Writing %s: PNG write error\n", filename);
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        fclose(fp);
+        return;
+    }
+
+    png_init_io(png_ptr, fp);
+    png_set_IHDR(png_ptr, info_ptr, (png_uint_32)width, (png_uint_32)height, 16,
+                 PNG_COLOR_TYPE_GRAY_ALPHA, PNG_INTERLACE_NONE,
+                 PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    // Same gAMA/cHRM chunks as the simplified API writes for the other 16-bit outputs
+    png_set_gAMA_fixed(png_ptr, info_ptr, 100000);
+    png_set_cHRM_fixed(png_ptr, info_ptr, 31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000);
+    png_write_info(png_ptr, info_ptr);
+    png_set_swap(png_ptr); // PNG samples are big-endian
+
+    for (size_t y = 0; y < height; y++)
+    {
+        png_write_row(png_ptr, (png_bytep)(pixel_data + y * width));
+    }
+
+    png_write_end(png_ptr, NULL);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(fp);
 }
 
 // PARALLELIZATION - Worker thread function
