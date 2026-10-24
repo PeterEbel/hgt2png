@@ -62,6 +62,7 @@
 #include <stdlib.h>
 #include <stdint.h> // For SIZE_MAX and explicit integer types
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -418,7 +419,13 @@ int main(int argc, char *argv[])
                 opts.scale_factor, opts.detail_intensity, opts.noise_seed);
     }
 
-    if ((strstr(input_file, "HGT") != NULL) || strstr(input_file, "hgt") != NULL)
+    // Nur die Dateiendung entscheidet (Verzeichnisnamen wie "../hgt/" dürfen nicht matchen)
+    const char *input_ext = strrchr(input_file, '.');
+    const char *input_slash = strrchr(input_file, '/');
+    if (input_ext != NULL && input_slash != NULL && input_ext < input_slash)
+        input_ext = NULL;
+
+    if (input_ext != NULL && strcasecmp(input_ext, ".hgt") == 0)
     {
         if (opts.verbose)
             fprintf(stderr, "INFO: Single-File Mode\n");
