@@ -175,6 +175,21 @@ slope_intensity=0.3      # Slope effect strength (0.0-1.0)
 - **Face Color Attributes**: Uses modern Blender Color Attribute pipeline
 - **Multi-Material Support**: Different biome materials in parallel
 
+## 🌲 **Batch Rendering with Vegetation Masks**
+
+[scripts/generate.py](scripts/generate.py) renders every heightmap in a directory with a `TerrainMaterial` material and a displaced `Plane`, and uses the vegetation mask of each tile:
+
+```bash
+hgt2png -V --biome temperate --alpha-nodata --16bit --lat-aridity 43.5:0.1,40:0.5,36:0.9 ../hgt/N37W007.hgt
+blender terrain.blend --background --python scripts/generate.py
+```
+
+- **Files:** `<tile>.png` and `<tile>_vegetation_<biome>.png` in `INPUT_DIR` (the script ignores masks and `*_render.png` when listing heightmaps).
+- **Nodes added:** `VegetationMask` (image texture, Non-Color) and `VegetationMix` (Mix Color). The mask drives the factor, the heightmap color goes to B, and the result replaces the heightmap as ColorRamp `Fac`. The sea shader (Diffuse + Mix Shader with the heightmap alpha) is left untouched.
+- **No mask:** The tile is rendered with a white mask, which equals the pure height coloring.
+- **Settings:** `INPUT_DIR`, `OUTPUT_DIR`, `VEGETATION_BIOME` and `BARE_GROUND_VALUE` (ColorRamp position for areas without vegetation) at the top of the script.
+- **Alpha:** Use `--16bit --alpha-nodata` with hgt2png 1.5.2 or newer, so NoData pixels keep gray value 0 under alpha 0.
+
 ## 🚨 **Troubleshooting**
 
 ### **No coloring visible:**
