@@ -92,29 +92,29 @@ typedef enum
 {
     CURVE_LINEAR = 0,
     CURVE_LOG = 1
-} CurveType;
+} curve_type_t;
 
 typedef enum
 {
     METADATA_NONE = 0,
     METADATA_JSON = 1,
     METADATA_TXT = 2
-} MetadataFormat;
+} metadata_format_t;
 
 // Vegetation Mask Parameters for different biomes
 typedef struct
 {
     int enabled;          // Enable vegetation mask generation
-    float minElevation;   // Minimum elevation for vegetation (meters)
-    float maxElevation;   // Maximum elevation for vegetation (meters)
-    float maxSlope;       // Maximum slope angle for vegetation (degrees)
-    float aspectModifier; // North/South face modifier (-1.0 to 1.0)
-    float drainageBonus;  // Bonus for valleys/drainage areas
-    float treeLine;       // Tree line elevation (meters)
-    float bushLine;       // Bush line elevation (meters)
-    float grassLine;      // Grass line elevation (meters)
-    float densityScale;   // Final density multiplier applied before clamping (1.0 = none)
-} VegetationParams;
+    float min_elevation;   // Minimum elevation for vegetation (meters)
+    float max_elevation;   // Maximum elevation for vegetation (meters)
+    float max_slope;       // Maximum slope angle for vegetation (degrees)
+    float aspect_modifier; // North/South face modifier (-1.0 to 1.0)
+    float drainage_bonus;  // Bonus for valleys/drainage areas
+    float tree_line;       // Tree line elevation (meters)
+    float bush_line;       // Bush line elevation (meters)
+    float grass_line;      // Grass line elevation (meters)
+    float density_scale;   // Final density multiplier applied before clamping (1.0 = none)
+} vegetation_params_t;
 
 typedef enum
 {
@@ -123,7 +123,7 @@ typedef enum
     BIOME_TROPICAL = 2,
     BIOME_DESERT = 3,
     BIOME_ARCTIC = 4
-} BiomeType;
+} biome_type_t;
 
 #define MAX_ARIDITY_POINTS 16
 
@@ -131,43 +131,43 @@ typedef struct
 {
     float lat;   // Latitude in degrees
     float value; // Aridity 0 (humid) to 1 (arid)
-} AridityPoint;
+} aridity_point_t;
 
 typedef struct
 {
-    int scaleFactor;
-    float detailIntensity;
-    int noiseSeed;
-    int enableDetail;
+    int scale_factor;
+    float detail_intensity;
+    int noise_seed;
+    int enable_detail;
     int verbose;
-    int showHelp;
-    int showVersion;
-    int numThreads;                // Option for thread count
-    int output16bit;               // Option for 16-bit PNG output
+    int show_help;
+    int show_version;
+    int num_threads;                // Option for thread count
+    int output_16bit;               // Option for 16-bit PNG output
     float gamma;                   // Gamma correction (default: 1.0)
-    CurveType curveType;           // Curve type (linear/log)
-    int minHeight;                 // Minimum height for mapping (-1 = Auto)
-    int maxHeight;                 // Maximum height for mapping (-1 = Auto)
-    MetadataFormat metadataFormat; // Metadata format (none/json/txt)
-    int alphaNoData;               // Option for transparent NoData pixels
-    VegetationParams vegetation;   // Vegetation mask parameters
-    BiomeType biome;               // Selected biome type
-    size_t removeIslands;          // Min. island size in source pixels (0 = disabled)
-    AridityPoint aridityPoints[MAX_ARIDITY_POINTS]; // Control points sorted by latitude
-    int aridityPointCount;         // 0 = latitude aridity disabled
-} ProgramOptions;
+    curve_type_t curve_type;           // Curve type (linear/log)
+    int min_height;                 // Minimum height for mapping (-1 = Auto)
+    int max_height;                 // Maximum height for mapping (-1 = Auto)
+    metadata_format_t metadata_format; // Metadata format (none/json/txt)
+    int alpha_nodata;               // Option for transparent NoData pixels
+    vegetation_params_t vegetation;   // Vegetation mask parameters
+    biome_type_t biome;               // Selected biome type
+    size_t remove_islands;          // Min. island size in source pixels (0 = disabled)
+    aridity_point_t aridity_points[MAX_ARIDITY_POINTS]; // Control points sorted by latitude
+    int aridity_point_count;         // 0 = latitude aridity disabled
+} program_options_t;
 
 // Threading structures for parallelization
 typedef struct
 {
-    int fileIndex;
-    struct tag_FileInfoSRTM *fileInfo; // Use full structure name
-    ProgramOptions *opts;
-    int *globalResult;            // Shared result status
-    pthread_mutex_t *outputMutex; // Mutex for thread-safe output
-    int *filesProcessed;          // Shared counter for progress indication
-    int totalFiles;               // Total number of files
-} ThreadData;
+    int file_index;
+    struct tag_file_info_srtm *file_info; // Use full structure name
+    program_options_t *opts;
+    int *global_result;            // Shared result status
+    pthread_mutex_t *output_mutex; // Mutex for thread-safe output
+    int *files_processed;          // Shared counter for progress indication
+    int total_files;               // Total number of files
+} thread_data_t;
 
 // Default values
 #define DEFAULT_SCALE_FACTOR 3
@@ -203,61 +203,61 @@ typedef struct
 static float calculate_slope_angle(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, float pixel_pitch_meters);
 static float calculate_aspect_angle(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, float pixel_pitch_meters);
 static float calculate_drainage_factor(const int16_t *elevation_data, size_t width, size_t height, size_t x, size_t y, int radius);
-static uint8_t calculate_vegetation_density_alpine(float elevation, float slope, float aspect, float drainage, const VegetationParams *params);
-static uint8_t calculate_vegetation_density_temperate(float elevation, float slope, float aspect, float drainage, const VegetationParams *params);
-static void initialize_alpine_biome(VegetationParams *params);
-static void initialize_temperate_biome(VegetationParams *params);
-static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int16_t *elevation_data, const ProgramOptions *opts);
+static uint8_t calculate_vegetation_density_alpine(float elevation, float slope, float aspect, float drainage, const vegetation_params_t *params);
+static uint8_t calculate_vegetation_density_temperate(float elevation, float slope, float aspect, float drainage, const vegetation_params_t *params);
+static void initialize_alpine_biome(vegetation_params_t *params);
+static void initialize_temperate_biome(vegetation_params_t *params);
+static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const int16_t *elevation_data, const program_options_t *opts);
 
 typedef int errno_t;
 
-typedef struct tag_RGB
+typedef struct tag_rgb
 {
     unsigned char r;
     unsigned char g;
     unsigned char b;
-} RGB, *pRGB;
+} rgb_t, *p_rgb_t;
 
-typedef struct tag_RGBA
+typedef struct tag_rgba
 {
     unsigned char r;
     unsigned char g;
     unsigned char b;
     unsigned char a;
-} RGBA, *pRGBA;
+} rgba_t, *p_rgba_t;
 
-typedef struct tag_RGBA16
+typedef struct tag_rgba16
 {
     uint16_t y; // 16-bit Grayscale/Luminance
     uint16_t a; // 16-bit Alpha
-} RGBA16, *pRGBA16;
+} rgba16_t, *p_rgba16_t;
 
-typedef struct tag_FileInfoSRTM
+typedef struct tag_file_info_srtm
 {
-    char szFilename[_MAX_PATH];
-    size_t iWidth;
-    size_t iHeight;
-    int16_t iMinElevation; // Explicitly signed 16-bit for elevation values
-    int16_t iMaxElevation; // Explicitly signed 16-bit for elevation values
-    size_t ulFilesize;
-    int srtmType;           // Per-file SRTM type instead of global variable
-    int noDataCount;       // Number of NoData pixels for statistics
-} FileInfo, *pFileInfo;
+    char filename[_MAX_PATH];
+    size_t width;
+    size_t height;
+    int16_t min_elevation; // Explicitly signed 16-bit for elevation values
+    int16_t max_elevation; // Explicitly signed 16-bit for elevation values
+    size_t filesize;
+    int srtm_type;           // Per-file SRTM type instead of global variable
+    int nodata_count;       // Number of NoData pixels for statistics
+} file_info_t, *p_file_info_t;
 
-FileInfo *fi;
-RGB *PixelData;
+file_info_t *fi;
+rgb_t *pixel_data;
 
-void WritePNG(const char *, size_t, size_t);
-static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGB *pixelData);
-static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA *pixelData);
-static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, const uint16_t *pixelData);
-static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA16 *pixelData);
+void write_png(const char *, size_t, size_t);
+static void write_png_with_data(const char *filename, size_t width, size_t height, const rgb_t *pixel_data);
+static void write_png_with_alpha(const char *filename, size_t width, size_t height, const rgba_t *pixel_data);
+static void write_png_16bit_grayscale(const char *filename, size_t width, size_t height, const uint16_t *pixel_data);
+static void write_png_16bit_with_alpha(const char *filename, size_t width, size_t height, const rgba16_t *pixel_data);
 
 // Parameter management functions
-static void initDefaultOptions(ProgramOptions *opts);
-static void showHelp(const char *programName);
-static void showVersion(void);
-static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile);
+static void init_default_options(program_options_t *opts);
+static void show_help(const char *program_name);
+static void show_version(void);
+static int parse_arguments(int argc, char *argv[], program_options_t *opts, char **input_file);
 
 // Safe multiplication with overflow detection
 static int safe_multiply_size_t(size_t a, size_t b, size_t *result)
@@ -325,32 +325,32 @@ static void *safe_malloc_pixels(size_t width, size_t height, size_t element_size
 }
 
 // New functions for Procedural Detail Generation
-static float SimpleNoise(int x, int y, int seed);
-static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed);
-static short int BilinearInterpolate(const short int *data, int width, int height, float x, float y);
-static float GetPixelDistance(int srtmType);
-static float CalculateLocalSlope(const short int *data, int width, int height, float x, float y, int srtmType);
-static float GetHeightTypeFactor(short int height);
-static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma);
-static int extractGeoBounds(const char *filename, float *south, float *north, float *west, float *east);
-static float latitudeAtRow(float south, float north, size_t row, size_t height);
-static float aridityAtLat(const AridityPoint *points, int count, float lat);
-static void applyAridity(VegetationParams *params, float aridity);
-static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opts, const struct tag_FileInfoSRTM *fi, int effectiveMinHeight, int effectiveMaxHeight);
-static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight, int scaleFactor, float detailIntensity, int seed, int srtmType, int flatSea);
-static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands);
+static float simple_noise(int x, int y, int seed);
+static float fractal_noise(float x, float y, int octaves, float persistence, float scale, int seed);
+static short int bilinear_interpolate(const short int *data, int width, int height, float x, float y);
+static float get_pixel_distance(int srtm_type);
+static float calculate_local_slope(const short int *data, int width, int height, float x, float y, int srtm_type);
+static float get_height_type_factor(short int height);
+static float apply_curve_mapping(float normalized_value, curve_type_t curve_type, float gamma);
+static int extract_geo_bounds(const char *filename, float *south, float *north, float *west, float *east);
+static float latitude_at_row(float south, float north, size_t row, size_t height);
+static float aridity_at_lat(const aridity_point_t *points, int count, float lat);
+static void apply_aridity(vegetation_params_t *params, float aridity);
+static void write_metadata_file(const char *png_filename, const program_options_t *opts, const struct tag_file_info_srtm *fi, int effective_min_height, int effective_max_height);
+static short int *add_procedural_detail(const short int *originalData, int originalWidth, int originalHeight, int scale_factor, float detail_intensity, int seed, int srtm_type, int flat_sea);
+static int remove_small_islands(int16_t *data, size_t width, size_t height, size_t min_pixels, size_t *removed_islands);
 
 // Functions for parallelization
-static void *processFileWorker(void *arg);
-static int processFilesParallel(struct tag_FileInfoSRTM *fi, int iNumFilesToConvert, ProgramOptions opts);
-static int processFilesSequential(struct tag_FileInfoSRTM *fi, int iNumFilesToConvert, ProgramOptions opts);
+static void *process_file_worker(void *arg);
+static int process_files_parallel(struct tag_file_info_srtm *fi, int num_files_to_convert, program_options_t opts);
+static int process_files_sequential(struct tag_file_info_srtm *fi, int num_files_to_convert, program_options_t opts);
 
 // Helper function: Extracts filename from path and generates PNG name in current directory
-static void generateOutputFilename(const char *inputPath, char *outputPath);
+static void generate_output_filename(const char *input_path, char *output_path);
 
 // NoData handling
-static int isNoDataValue(int16_t value, int srtmType);
-static int16_t processElevationValue(int16_t rawValue, int srtmType, int *noDataCount);
+static int is_nodata_value(int16_t value, int srtm_type);
+static int16_t process_elevation_value(int16_t raw_value, int srtm_type, int *nodata_count);
 
 const int SRTM3 = 1201;
 const int SRTM1 = 3601;
@@ -362,117 +362,117 @@ const size_t SRTM1_SIZE = 3601 * 3601 * sizeof(int16_t);
 const int16_t NODATA_VALUE_BE = (int16_t)0x8000; // Big Endian: -32768
 const int16_t NODATA_REPLACEMENT = 0;            // Replacement value for NoData
 
-char OutputHeightmapFile[_MAX_PATH];
+char output_heightmap_file[_MAX_PATH];
 
-int16_t iOverallMinElevation;
-int16_t iOverallMaxElevation;
-int16_t iCurrentMinElevation;
-int16_t iCurrentMaxElevation;
+int16_t overall_min_elevation;
+int16_t overall_max_elevation;
+int16_t current_min_elevation;
+int16_t current_max_elevation;
 
 int main(int argc, char *argv[])
 {
-    ProgramOptions opts;
-    char *inputFile = NULL;
+    program_options_t opts;
+    char *input_file = NULL;
 
-    FILE *InFile;
-    FILE *FileList;
-    char *sCurrentFilename[255];
-    char sBuffer[255];
+    FILE *in_file;
+    FILE *file_list;
+    char *current_filename[255];
+    char buffer[255];
     int f = 0;
 
-    short int *iElevationData;
-    int iNumIntRead;
-    int iNumFilesToConvert = 0;
+    short int *elevation_data;
+    int num_int_read;
+    int num_files_to_convert = 0;
 
     // Initialize default options
-    initDefaultOptions(&opts);
+    init_default_options(&opts);
 
     // Parse command line arguments
-    int parseResult = parseArguments(argc, argv, &opts, &inputFile);
-    if (parseResult != 0)
+    int parse_result = parse_arguments(argc, argv, &opts, &input_file);
+    if (parse_result != 0)
     {
-        return parseResult;
+        return parse_result;
     }
 
     // Show version if requested
-    if (opts.showVersion)
+    if (opts.show_version)
     {
-        showVersion();
+        show_version();
         return 0;
     }
 
     // Show help if requested or no input file
-    if (opts.showHelp || inputFile == NULL)
+    if (opts.show_help || input_file == NULL)
     {
-        showHelp(argv[0]);
-        return opts.showHelp ? 0 : 1;
+        show_help(argv[0]);
+        return opts.show_help ? 0 : 1;
     }
 
     if (opts.verbose)
     {
         fprintf(stderr, "\nhgt2png Converter v1.5.1 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
-                opts.scaleFactor, opts.detailIntensity, opts.noiseSeed);
+                opts.scale_factor, opts.detail_intensity, opts.noise_seed);
     }
 
-    if ((strstr(inputFile, "HGT") != NULL) || strstr(inputFile, "hgt") != NULL)
+    if ((strstr(input_file, "HGT") != NULL) || strstr(input_file, "hgt") != NULL)
     {
         if (opts.verbose)
             fprintf(stderr, "INFO: Single-File Mode\n");
-        sCurrentFilename[0] = (char *)malloc(strlen(inputFile) + 1);
-        if (sCurrentFilename[0] == NULL)
+        current_filename[0] = (char *)malloc(strlen(input_file) + 1);
+        if (current_filename[0] == NULL)
         {
             fprintf(stderr, "Error: Can't allocate memory for filename\n");
             return 1;
         }
-        strcpy(sCurrentFilename[0], inputFile);
-        iNumFilesToConvert = 1;
+        strcpy(current_filename[0], input_file);
+        num_files_to_convert = 1;
     }
     else
     {
         if (opts.verbose)
             fprintf(stderr, "INFO: Filelist Mode\n");
-        if ((FileList = fopen(inputFile, "rb")) == NULL)
+        if ((file_list = fopen(input_file, "rb")) == NULL)
         {
-            fprintf(stderr, "Error: Can't open file list %s\n", inputFile);
+            fprintf(stderr, "Error: Can't open file list %s\n", input_file);
             // Cleanup falls bereits Single-File allokiert wurde
-            if (iNumFilesToConvert > 0 && sCurrentFilename[0] != NULL)
+            if (num_files_to_convert > 0 && current_filename[0] != NULL)
             {
-                free(sCurrentFilename[0]);
-                sCurrentFilename[0] = NULL;
+                free(current_filename[0]);
+                current_filename[0] = NULL;
             }
             return 1;
         }
 
-        while (!feof(FileList) && f < _MAX_FILES - 1)
+        while (!feof(file_list) && f < _MAX_FILES - 1)
         {
-            if (fgets(sBuffer, sizeof(sBuffer), FileList) != NULL)
+            if (fgets(buffer, sizeof(buffer), file_list) != NULL)
             {
                 // Remove newline and check for empty lines
-                size_t len = strlen(sBuffer);
-                if (len > 0 && sBuffer[len - 1] == '\n')
+                size_t len = strlen(buffer);
+                if (len > 0 && buffer[len - 1] == '\n')
                 {
-                    sBuffer[len - 1] = '\0';
+                    buffer[len - 1] = '\0';
                     len--;
                 }
 
                 // Skip empty lines
                 if (len > 0)
                 {
-                    sCurrentFilename[f] = (char *)malloc(len + 1);
-                    if (sCurrentFilename[f] == NULL)
+                    current_filename[f] = (char *)malloc(len + 1);
+                    if (current_filename[f] == NULL)
                     {
                         fprintf(stderr, "Error: Can't allocate memory for filename %d\n", f);
                         // Cleanup already allocated filenames
                         for (int cleanup = 0; cleanup < f; cleanup++)
                         {
-                            free(sCurrentFilename[cleanup]);
-                            sCurrentFilename[cleanup] = NULL;
+                            free(current_filename[cleanup]);
+                            current_filename[cleanup] = NULL;
                         }
-                        fclose(FileList);
+                        fclose(file_list);
                         return 1;
                     }
-                    strcpy(sCurrentFilename[f], sBuffer);
+                    strcpy(current_filename[f], buffer);
                     f++;
                 }
             }
@@ -483,22 +483,22 @@ int main(int argc, char *argv[])
             fprintf(stderr, "WARNING: Maximum number of files (%d) reached. Some files may be skipped.\n", _MAX_FILES - 1);
         }
 
-        fclose(FileList);
-        iNumFilesToConvert = f;
+        fclose(file_list);
+        num_files_to_convert = f;
     }
 
-    fprintf(stderr, "INFO: Number of files to convert: %d\n", iNumFilesToConvert);
+    fprintf(stderr, "INFO: Number of files to convert: %d\n", num_files_to_convert);
 
-    if ((fi = (FileInfo *)malloc(iNumFilesToConvert * sizeof(struct tag_FileInfoSRTM))) == NULL)
+    if ((fi = (file_info_t *)malloc(num_files_to_convert * sizeof(struct tag_file_info_srtm))) == NULL)
     {
         fprintf(stderr, "Error: Can't allocate FileInfo array\n");
         // Cleanup already allocated filenames
-        for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+        for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
         {
-            if (sCurrentFilename[cleanup] != NULL)
+            if (current_filename[cleanup] != NULL)
             {
-                free(sCurrentFilename[cleanup]);
-                sCurrentFilename[cleanup] = NULL;
+                free(current_filename[cleanup]);
+                current_filename[cleanup] = NULL;
             }
         }
         return 1;
@@ -506,33 +506,33 @@ int main(int argc, char *argv[])
 
     struct stat buf;
 
-    iOverallMinElevation = 9999;
-    iOverallMaxElevation = 0;
-    iCurrentMinElevation = 9999;
-    iCurrentMaxElevation = 0;
+    overall_min_elevation = 9999;
+    overall_max_elevation = 0;
+    current_min_elevation = 9999;
+    current_max_elevation = 0;
 
-    for (int i = 0; i < iNumFilesToConvert; i++)
+    for (int i = 0; i < num_files_to_convert; i++)
     {
 
-        iNumIntRead = 0;
-        char sTmp[5];
+        num_int_read = 0;
+        char tmp[5];
 
-        memset(&fi[i], 0, sizeof(FileInfo));
-        strcpy(fi[i].szFilename, sCurrentFilename[i]);
-        fprintf(stderr, "INFO: Pre-Processing: %s ", fi[i].szFilename);
-        fi[i].iMinElevation = 0;
-        fi[i].iMaxElevation = 0;
+        memset(&fi[i], 0, sizeof(file_info_t));
+        strcpy(fi[i].filename, current_filename[i]);
+        fprintf(stderr, "INFO: Pre-Processing: %s ", fi[i].filename);
+        fi[i].min_elevation = 0;
+        fi[i].max_elevation = 0;
 
-        if ((InFile = fopen(fi[i].szFilename, "rb")) == NULL)
+        if ((in_file = fopen(fi[i].filename, "rb")) == NULL)
         {
-            fprintf(stderr, "Error: Can't open input file %s\n", fi[i].szFilename);
+            fprintf(stderr, "Error: Can't open input file %s\n", fi[i].filename);
             // Cleanup allocated memory
-            for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+            for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
             {
-                if (sCurrentFilename[cleanup] != NULL)
+                if (current_filename[cleanup] != NULL)
                 {
-                    free(sCurrentFilename[cleanup]);
-                    sCurrentFilename[cleanup] = NULL;
+                    free(current_filename[cleanup]);
+                    current_filename[cleanup] = NULL;
                 }
             }
             free(fi);
@@ -540,89 +540,89 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        fstat(fileno(InFile), &buf);
-        fi[i].ulFilesize = buf.st_size;
+        fstat(fileno(in_file), &buf);
+        fi[i].filesize = buf.st_size;
 
-        if (fi[i].ulFilesize == SRTM3_SIZE)
+        if (fi[i].filesize == SRTM3_SIZE)
         {
-            fi[i].srtmType = SRTM3; // Pro-Datei statt global
-            fi[i].iWidth = 1201;
-            fi[i].iHeight = 1201;
+            fi[i].srtm_type = SRTM3; // Pro-Datei statt global
+            fi[i].width = 1201;
+            fi[i].height = 1201;
         }
-        else if (fi[i].ulFilesize == SRTM1_SIZE)
+        else if (fi[i].filesize == SRTM1_SIZE)
         {
-            fi[i].srtmType = SRTM1; // Per-file instead of global
-            fi[i].iWidth = 3601;
-            fi[i].iHeight = 3601;
+            fi[i].srtm_type = SRTM1; // Per-file instead of global
+            fi[i].width = 3601;
+            fi[i].height = 3601;
         }
         else
         {
             // Custom size parsing via filename with fallback
-            fi[i].iWidth = 0;
-            fi[i].iHeight = 0;
+            fi[i].width = 0;
+            fi[i].height = 0;
 
             // Safe parsing only for sufficiently long filename
-            size_t nameLen = strlen(fi[i].szFilename);
-            if (nameLen >= 15)
+            size_t name_len = strlen(fi[i].filename);
+            if (name_len >= 15)
             { // At least "N00E000_1234x5678.hgt"
-                memcpy(sTmp, &sCurrentFilename[i][5], 4);
-                sTmp[4] = '\0';
-                int parsedWidth = atoi(sTmp);
+                memcpy(tmp, &current_filename[i][5], 4);
+                tmp[4] = '\0';
+                int parsed_width = atoi(tmp);
 
-                memcpy(sTmp, &sCurrentFilename[i][10], 4);
-                sTmp[4] = '\0';
-                int parsedHeight = atoi(sTmp);
+                memcpy(tmp, &current_filename[i][10], 4);
+                tmp[4] = '\0';
+                int parsed_height = atoi(tmp);
 
                 // Plausibility check: dimensions must be reasonable
-                if (parsedWidth > 0 && parsedWidth <= 65536 &&
-                    parsedHeight > 0 && parsedHeight <= 65536)
+                if (parsed_width > 0 && parsed_width <= 65536 &&
+                    parsed_height > 0 && parsed_height <= 65536)
                 {
-                    fi[i].iWidth = parsedWidth;
-                    fi[i].iHeight = parsedHeight;
-                    fi[i].srtmType = fi[i].iWidth * fi[i].iHeight;
+                    fi[i].width = parsed_width;
+                    fi[i].height = parsed_height;
+                    fi[i].srtm_type = fi[i].width * fi[i].height;
                 }
             }
 
             // Fallback: Mark as UNKNOWN for invalid parsing
-            if (fi[i].iWidth == 0 || fi[i].iHeight == 0)
+            if (fi[i].width == 0 || fi[i].height == 0)
             {
-                fi[i].srtmType = SRTM_UNKNOWN;
+                fi[i].srtm_type = SRTM_UNKNOWN;
                 if (opts.verbose)
                 {
-                    fprintf(stderr, "WARNING: Could not parse dimensions from filename %s\n", fi[i].szFilename);
+                    fprintf(stderr, "WARNING: Could not parse dimensions from filename %s\n", fi[i].filename);
                 }
             }
             else
             {
                 // Additional validation: file size must match dimensions (overflow-protected)
-                size_t expectedPixels, expectedSize;
-                if (!safe_multiply_size_t(fi[i].iWidth, fi[i].iHeight, &expectedPixels) ||
-                    !safe_multiply_size_t(expectedPixels, 2, &expectedSize))
+                size_t expected_pixels, expected_size;
+                if (!safe_multiply_size_t(fi[i].width, fi[i].height, &expected_pixels) ||
+                    !safe_multiply_size_t(expected_pixels, 2, &expected_size))
                 {
                     fprintf(stderr, "ERROR: Dimension overflow for %s: %zu×%zu pixels\n",
-                            fi[i].szFilename, fi[i].iWidth, fi[i].iHeight);
-                    fi[i].srtmType = SRTM_UNKNOWN; // Mark as invalid
+                            fi[i].filename, fi[i].width, fi[i].height);
+                    fi[i].srtm_type = SRTM_UNKNOWN; // Mark as invalid
                 }
-                else if (fi[i].ulFilesize != expectedSize)
+                else if (fi[i].filesize != expected_size)
                 {
                     fprintf(stderr, "ERROR: Filesize mismatch for %s: expected %zu bytes (%zu×%zu), got %zu bytes\n",
-                            fi[i].szFilename, expectedSize, fi[i].iWidth, fi[i].iHeight, fi[i].ulFilesize);
-                    fi[i].srtmType = SRTM_UNKNOWN; // Mark as invalid
+                            fi[i].filename, expected_size, fi[i].width, fi[i].height, fi[i].filesize);
+                    fi[i].srtm_type = SRTM_UNKNOWN; // Mark as invalid
                 }
             }
         }
 
-        if (fi[i].srtmType == SRTM_UNKNOWN)
+        if (fi[i].srtm_type == SRTM_UNKNOWN)
         { // Per-file check
-            fprintf(stderr, "Error: %s has an unknown SRTM type\n", fi[i].szFilename);
-            fclose(InFile);
+            fprintf(stderr, "Error: %s has an unknown SRTM type\n", fi[i].filename);
+            fclose(in_file);
             // Cleanup allocated memory
-            for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+            for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
             {
-                if (sCurrentFilename[cleanup] != NULL)
+                if (current_filename[cleanup] != NULL)
                 {
-                    free(sCurrentFilename[cleanup]);
-                    sCurrentFilename[cleanup] = NULL;
+                    free(current_filename[cleanup]);
+                    current_filename[cleanup] = NULL;
                 }
             }
             free(fi);
@@ -630,17 +630,17 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        if ((iElevationData = (short *)malloc(fi[i].ulFilesize)) == NULL)
+        if ((elevation_data = (short *)malloc(fi[i].filesize)) == NULL)
         {
-            fprintf(stderr, "Error: Can't allocate memory to load %s\n", fi[i].szFilename);
-            fclose(InFile);
+            fprintf(stderr, "Error: Can't allocate memory to load %s\n", fi[i].filename);
+            fclose(in_file);
             // Cleanup allocated memory
-            for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+            for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
             {
-                if (sCurrentFilename[cleanup] != NULL)
+                if (current_filename[cleanup] != NULL)
                 {
-                    free(sCurrentFilename[cleanup]);
-                    sCurrentFilename[cleanup] = NULL;
+                    free(current_filename[cleanup]);
+                    current_filename[cleanup] = NULL;
                 }
             }
             free(fi);
@@ -648,19 +648,19 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        if ((iNumIntRead = fread(iElevationData, 1, fi[i].ulFilesize, InFile)) != (int)fi[i].ulFilesize)
+        if ((num_int_read = fread(elevation_data, 1, fi[i].filesize, in_file)) != (int)fi[i].filesize)
         {
             fprintf(stderr, "Error: Can't load elevation data\n");
-            free(iElevationData);
-            iElevationData = NULL;
-            fclose(InFile);
+            free(elevation_data);
+            elevation_data = NULL;
+            fclose(in_file);
             // Cleanup allocated memory
-            for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+            for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
             {
-                if (sCurrentFilename[cleanup] != NULL)
+                if (current_filename[cleanup] != NULL)
                 {
-                    free(sCurrentFilename[cleanup]);
-                    sCurrentFilename[cleanup] = NULL;
+                    free(current_filename[cleanup]);
+                    current_filename[cleanup] = NULL;
                 }
             }
             free(fi);
@@ -668,92 +668,92 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        iCurrentMaxElevation = 0;
-        iCurrentMinElevation = 9999;
-        fi[i].noDataCount = 0; // Initialize NoData counter
+        current_max_elevation = 0;
+        current_min_elevation = 9999;
+        fi[i].nodata_count = 0; // Initialize NoData counter
 
-        for (unsigned long j = 0; j < fi[i].ulFilesize / 2; j++)
+        for (unsigned long j = 0; j < fi[i].filesize / 2; j++)
         {
             // NoData handling
-            iElevationData[j] = processElevationValue(iElevationData[j], fi[i].srtmType, &fi[i].noDataCount);
+            elevation_data[j] = process_elevation_value(elevation_data[j], fi[i].srtm_type, &fi[i].nodata_count);
 
             // Min/Max only for valid values (not for NoData replacement values)
-            if (iElevationData[j] != NODATA_REPLACEMENT)
+            if (elevation_data[j] != NODATA_REPLACEMENT)
             {
-                if (iElevationData[j] < iCurrentMinElevation)
-                    iCurrentMinElevation = iElevationData[j];
-                if (iElevationData[j] > iCurrentMaxElevation)
-                    iCurrentMaxElevation = iElevationData[j];
+                if (elevation_data[j] < current_min_elevation)
+                    current_min_elevation = elevation_data[j];
+                if (elevation_data[j] > current_max_elevation)
+                    current_max_elevation = elevation_data[j];
             }
         }
 
-        if (iCurrentMinElevation < iOverallMinElevation)
-            iOverallMinElevation = iCurrentMinElevation;
-        if (iCurrentMaxElevation > iOverallMaxElevation)
-            iOverallMaxElevation = iCurrentMaxElevation;
+        if (current_min_elevation < overall_min_elevation)
+            overall_min_elevation = current_min_elevation;
+        if (current_max_elevation > overall_max_elevation)
+            overall_max_elevation = current_max_elevation;
 
         // Output NoData statistics - avoid division by 0
-        if (fi[i].noDataCount > 0)
+        if (fi[i].nodata_count > 0)
         {
-            unsigned long totalPixels = fi[i].ulFilesize / 2;
-            float noDataPercent = 0.0f;
-            if (totalPixels > 0)
+            unsigned long total_pixels = fi[i].filesize / 2;
+            float nodata_percent = 0.0f;
+            if (total_pixels > 0)
             {
-                noDataPercent = (float)fi[i].noDataCount / totalPixels * 100.0f;
+                nodata_percent = (float)fi[i].nodata_count / total_pixels * 100.0f;
             }
             fprintf(stderr, "- MIN=%4d MAX=%4d, NoData=%d (%.1f%%)\n",
-                    iCurrentMinElevation, iCurrentMaxElevation, fi[i].noDataCount, noDataPercent);
+                    current_min_elevation, current_max_elevation, fi[i].nodata_count, nodata_percent);
         }
         else
         {
-            fprintf(stderr, "- MIN=%4d MAX=%4d\n", iCurrentMinElevation, iCurrentMaxElevation);
+            fprintf(stderr, "- MIN=%4d MAX=%4d\n", current_min_elevation, current_max_elevation);
         }
 
-        free(iElevationData);
-        iElevationData = NULL;
-        fclose(InFile);
+        free(elevation_data);
+        elevation_data = NULL;
+        fclose(in_file);
     }
 
     // PARALLELIZED BATCH PROCESSING
-    int processingResult = processFilesParallel(fi, iNumFilesToConvert, opts);
+    int processing_result = process_files_parallel(fi, num_files_to_convert, opts);
 
-    if (processingResult != 0)
+    if (processing_result != 0)
     {
         // Cleanup on error
-        for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+        for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
         {
-            if (sCurrentFilename[cleanup] != NULL)
+            if (current_filename[cleanup] != NULL)
             {
-                free(sCurrentFilename[cleanup]);
-                sCurrentFilename[cleanup] = NULL;
+                free(current_filename[cleanup]);
+                current_filename[cleanup] = NULL;
             }
         }
         free(fi);
         fi = NULL;
-        return processingResult;
+        return processing_result;
     }
 
     // Cleanup allocated memory
     free(fi);
     fi = NULL;
 
-    for (int cleanup = 0; cleanup < iNumFilesToConvert; cleanup++)
+    for (int cleanup = 0; cleanup < num_files_to_convert; cleanup++)
     {
-        if (sCurrentFilename[cleanup] != NULL)
+        if (current_filename[cleanup] != NULL)
         {
-            free(sCurrentFilename[cleanup]);
+            free(current_filename[cleanup]);
         }
     }
 
     fprintf(stderr, "Info: Done\n");
 }
 
-void WritePNG(const char *szFilename, size_t _iWidth, size_t _iHeight)
+void write_png(const char *filename, size_t width, size_t height)
 {
-    WritePNGWithData(szFilename, _iWidth, _iHeight, PixelData);
+    write_png_with_data(filename, width, height, pixel_data);
 }
 
-static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGB *pixelData)
+static void write_png_with_data(const char *filename, size_t width, size_t height, const rgb_t *pixel_data)
 {
     png_image image;
 
@@ -761,19 +761,19 @@ static void WritePNGWithData(const char *szFilename, size_t _iWidth, size_t _iHe
 
     image.version = PNG_IMAGE_VERSION;
     image.format = PNG_FORMAT_RGB;
-    image.width = _iWidth;
-    image.height = _iHeight;
+    image.width = width;
+    image.height = height;
 
-    fprintf(stderr, "Info: Writing %s\n", szFilename);
-    if (!png_image_write_to_file(&image, szFilename, 0 /*convert_to_8bit*/, (png_bytep)pixelData, 0 /*row_stride*/, NULL /*colormap*/))
+    fprintf(stderr, "Info: Writing %s\n", filename);
+    if (!png_image_write_to_file(&image, filename, 0 /*convert_to_8bit*/, (png_bytep)pixel_data, 0 /*row_stride*/, NULL /*colormap*/))
     {
-        fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+        fprintf(stderr, "Error: Writing %s: %s\n", filename, image.message);
     }
 
     png_image_free(&image);
 }
 
-static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA *pixelData)
+static void write_png_with_alpha(const char *filename, size_t width, size_t height, const rgba_t *pixel_data)
 {
     png_image image;
 
@@ -781,19 +781,19 @@ static void WritePNGWithAlpha(const char *szFilename, size_t _iWidth, size_t _iH
 
     image.version = PNG_IMAGE_VERSION;
     image.format = PNG_FORMAT_RGBA; // RGBA mit Alpha-Kanal
-    image.width = _iWidth;
-    image.height = _iHeight;
+    image.width = width;
+    image.height = height;
 
-    fprintf(stderr, "Info: Writing RGBA %s\n", szFilename);
-    if (!png_image_write_to_file(&image, szFilename, 0 /*convert_to_8bit*/, (png_bytep)pixelData, 0 /*row_stride*/, NULL /*colormap*/))
+    fprintf(stderr, "Info: Writing RGBA %s\n", filename);
+    if (!png_image_write_to_file(&image, filename, 0 /*convert_to_8bit*/, (png_bytep)pixel_data, 0 /*row_stride*/, NULL /*colormap*/))
     {
-        fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+        fprintf(stderr, "Error: Writing %s: %s\n", filename, image.message);
     }
 
     png_image_free(&image);
 }
 
-static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_t _iHeight, const uint16_t *pixelData)
+static void write_png_16bit_grayscale(const char *filename, size_t width, size_t height, const uint16_t *pixel_data)
 {
     png_image image;
 
@@ -801,19 +801,19 @@ static void WritePNG16BitGrayscale(const char *szFilename, size_t _iWidth, size_
 
     image.version = PNG_IMAGE_VERSION;
     image.format = PNG_FORMAT_LINEAR_Y; // 16-bit Grayscale
-    image.width = _iWidth;
-    image.height = _iHeight;
+    image.width = width;
+    image.height = height;
 
-    fprintf(stderr, "Info: Writing 16-bit %s\n", szFilename);
-    if (!png_image_write_to_file(&image, szFilename, 0 /*convert_to_8bit*/, (png_bytep)pixelData, 0 /*row_stride*/, NULL /*colormap*/))
+    fprintf(stderr, "Info: Writing 16-bit %s\n", filename);
+    if (!png_image_write_to_file(&image, filename, 0 /*convert_to_8bit*/, (png_bytep)pixel_data, 0 /*row_stride*/, NULL /*colormap*/))
     {
-        fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+        fprintf(stderr, "Error: Writing %s: %s\n", filename, image.message);
     }
 
     png_image_free(&image);
 }
 
-static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_t _iHeight, const RGBA16 *pixelData)
+static void write_png_16bit_with_alpha(const char *filename, size_t width, size_t height, const rgba16_t *pixel_data)
 {
     png_image image;
 
@@ -821,500 +821,500 @@ static void WritePNG16BitWithAlpha(const char *szFilename, size_t _iWidth, size_
 
     image.version = PNG_IMAGE_VERSION;
     image.format = PNG_FORMAT_LINEAR_Y_ALPHA; // 16-bit Grayscale + Alpha
-    image.width = _iWidth;
-    image.height = _iHeight;
+    image.width = width;
+    image.height = height;
 
-    fprintf(stderr, "Info: Writing 16-bit RGBA %s\n", szFilename);
-    if (!png_image_write_to_file(&image, szFilename, 0 /*convert_to_8bit*/, (png_bytep)pixelData, 0 /*row_stride*/, NULL /*colormap*/))
+    fprintf(stderr, "Info: Writing 16-bit RGBA %s\n", filename);
+    if (!png_image_write_to_file(&image, filename, 0 /*convert_to_8bit*/, (png_bytep)pixel_data, 0 /*row_stride*/, NULL /*colormap*/))
     {
-        fprintf(stderr, "Error: Writing %s: %s\n", szFilename, image.message);
+        fprintf(stderr, "Error: Writing %s: %s\n", filename, image.message);
     }
 
     png_image_free(&image);
 }
 
 // PARALLELIZATION - Worker thread function
-static void *processFileWorker(void *arg)
+static void *process_file_worker(void *arg)
 {
-    ThreadData *data = (ThreadData *)arg;
-    struct tag_FileInfoSRTM *fi = &data->fileInfo[data->fileIndex];
-    ProgramOptions *opts = data->opts;
+    thread_data_t *data = (thread_data_t *)arg;
+    struct tag_file_info_srtm *fi = &data->file_info[data->file_index];
+    program_options_t *opts = data->opts;
 
-    FILE *InFile = NULL;
-    short *iElevationData = NULL;
-    RGB *PixelData = NULL;
-    RGBA *PixelDataRGBA = NULL; // New RGBA data for alpha support
-    int iNumIntRead;
-    char OutputHeightmapFile[256];
+    FILE *in_file = NULL;
+    short *elevation_data = NULL;
+    rgb_t *pixel_data = NULL;
+    rgba_t *pixel_data_rgba = NULL; // New RGBA data for alpha support
+    int num_int_read;
+    char output_heightmap_file[256];
 
     // Thread-safe progress indication
-    pthread_mutex_lock(data->outputMutex);
+    pthread_mutex_lock(data->output_mutex);
     if (opts->verbose)
     {
         fprintf(stderr, "INFO: Processing file %d/%d: %s\n",
-                data->fileIndex + 1, data->totalFiles, fi->szFilename);
+                data->file_index + 1, data->total_files, fi->filename);
     }
-    pthread_mutex_unlock(data->outputMutex);
+    pthread_mutex_unlock(data->output_mutex);
 
     // Open file
-    if ((InFile = fopen(fi->szFilename, "rb")) == NULL)
+    if ((in_file = fopen(fi->filename, "rb")) == NULL)
     {
-        pthread_mutex_lock(data->outputMutex);
-        fprintf(stderr, "Error: Can't open input file %s\n", fi->szFilename);
-        pthread_mutex_unlock(data->outputMutex);
-        *(data->globalResult) = 1;
+        pthread_mutex_lock(data->output_mutex);
+        fprintf(stderr, "Error: Can't open input file %s\n", fi->filename);
+        pthread_mutex_unlock(data->output_mutex);
+        *(data->global_result) = 1;
         return NULL; // No memory to leak here
     }
 
     // Allocate memory for elevation data
-    if ((iElevationData = (short *)malloc(fi->ulFilesize)) == NULL)
+    if ((elevation_data = (short *)malloc(fi->filesize)) == NULL)
     {
-        pthread_mutex_lock(data->outputMutex);
-        fprintf(stderr, "Error: Can't allocate elevation data block %s\n", fi->szFilename);
-        pthread_mutex_unlock(data->outputMutex);
-        fclose(InFile);
-        *(data->globalResult) = 1;
+        pthread_mutex_lock(data->output_mutex);
+        fprintf(stderr, "Error: Can't allocate elevation data block %s\n", fi->filename);
+        pthread_mutex_unlock(data->output_mutex);
+        fclose(in_file);
+        *(data->global_result) = 1;
         return NULL; // File was closed, no memory allocated
     }
 
     // Read elevation data
-    if ((iNumIntRead = fread(iElevationData, 1, fi->ulFilesize, InFile)) != (int)fi->ulFilesize)
+    if ((num_int_read = fread(elevation_data, 1, fi->filesize, in_file)) != (int)fi->filesize)
     {
-        pthread_mutex_lock(data->outputMutex);
-        fprintf(stderr, "Error: Can't load elevation data from %s\n", fi->szFilename);
-        pthread_mutex_unlock(data->outputMutex);
-        fclose(InFile);
-        free(iElevationData);
-        iElevationData = NULL;
-        *(data->globalResult) = 1;
+        pthread_mutex_lock(data->output_mutex);
+        fprintf(stderr, "Error: Can't load elevation data from %s\n", fi->filename);
+        pthread_mutex_unlock(data->output_mutex);
+        fclose(in_file);
+        free(elevation_data);
+        elevation_data = NULL;
+        *(data->global_result) = 1;
         return NULL;
     }
-    fclose(InFile);
+    fclose(in_file);
 
     // Endian conversion, NoData replacement and clamping must precede island removal and detail generation
-    int threadNoDataCount = 0;
-    for (unsigned long pre = 0; pre < (fi->ulFilesize) / 2; pre++)
+    int thread_nodata_count = 0;
+    for (unsigned long pre = 0; pre < (fi->filesize) / 2; pre++)
     {
-        iElevationData[pre] = processElevationValue(iElevationData[pre], fi->srtmType, &threadNoDataCount);
+        elevation_data[pre] = process_elevation_value(elevation_data[pre], fi->srtm_type, &thread_nodata_count);
     }
 
     // Update NoData statistics thread-safely
-    pthread_mutex_lock(data->outputMutex);
-    fi->noDataCount += threadNoDataCount;
-    if (opts->verbose && threadNoDataCount > 0)
+    pthread_mutex_lock(data->output_mutex);
+    fi->nodata_count += thread_nodata_count;
+    if (opts->verbose && thread_nodata_count > 0)
     {
-        fprintf(stderr, "INFO: Found %d NoData values in %s\n", threadNoDataCount, fi->szFilename);
+        fprintf(stderr, "INFO: Found %d NoData values in %s\n", thread_nodata_count, fi->filename);
     }
-    pthread_mutex_unlock(data->outputMutex);
+    pthread_mutex_unlock(data->output_mutex);
 
-    if (opts->removeIslands > 0)
+    if (opts->remove_islands > 0)
     {
-        size_t removedIslands = 0;
-        int islandResult = removeSmallIslands((int16_t *)iElevationData, fi->iWidth, fi->iHeight,
-                                              opts->removeIslands, &removedIslands);
+        size_t removed_islands = 0;
+        int island_result = remove_small_islands((int16_t *)elevation_data, fi->width, fi->height,
+                                              opts->remove_islands, &removed_islands);
 
-        pthread_mutex_lock(data->outputMutex);
-        if (islandResult != 0)
+        pthread_mutex_lock(data->output_mutex);
+        if (island_result != 0)
         {
-            fprintf(stderr, "WARNING: Island removal skipped for %s (allocation failed)\n", fi->szFilename);
+            fprintf(stderr, "WARNING: Island removal skipped for %s (allocation failed)\n", fi->filename);
         }
         else if (opts->verbose)
         {
             fprintf(stderr, "INFO: Removed %zu islands smaller than %zu pixels in %s\n",
-                    removedIslands, opts->removeIslands, fi->szFilename);
+                    removed_islands, opts->remove_islands, fi->filename);
         }
-        pthread_mutex_unlock(data->outputMutex);
+        pthread_mutex_unlock(data->output_mutex);
     }
 
     // PROCEDURAL DETAIL GENERATION
-    if (opts->enableDetail)
+    if (opts->enable_detail)
     {
         // Add procedural detail
-        short int *detailedData = AddProceduralDetail(iElevationData, fi->iWidth, fi->iHeight,
-                                                      opts->scaleFactor, opts->detailIntensity, opts->noiseSeed, fi->srtmType,
-                                                      opts->removeIslands > 0);
+        short int *detailed_data = add_procedural_detail(elevation_data, fi->width, fi->height,
+                                                      opts->scale_factor, opts->detail_intensity, opts->noise_seed, fi->srtm_type,
+                                                      opts->remove_islands > 0);
 
-        if (detailedData)
+        if (detailed_data)
         {
-            free(iElevationData);
-            iElevationData = detailedData;
-            fi->iWidth *= opts->scaleFactor;
-            fi->iHeight *= opts->scaleFactor;
+            free(elevation_data);
+            elevation_data = detailed_data;
+            fi->width *= opts->scale_factor;
+            fi->height *= opts->scale_factor;
 
             // Safe calculation of new file size
-            size_t newPixels, newFilesize;
-            if (!safe_multiply_size_t(fi->iWidth, fi->iHeight, &newPixels) ||
-                !safe_multiply_size_t(newPixels, sizeof(short int), &newFilesize))
+            size_t new_pixels, new_filesize;
+            if (!safe_multiply_size_t(fi->width, fi->height, &new_pixels) ||
+                !safe_multiply_size_t(new_pixels, sizeof(short int), &new_filesize))
             {
-                pthread_mutex_lock(data->outputMutex);
+                pthread_mutex_lock(data->output_mutex);
                 fprintf(stderr, "ERROR: File size overflow after enhancement: %zu×%zu for %s\n",
-                        fi->iWidth, fi->iHeight, fi->szFilename);
-                pthread_mutex_unlock(data->outputMutex);
-                free(iElevationData);
-                iElevationData = NULL;
-                *(data->globalResult) = 1;
+                        fi->width, fi->height, fi->filename);
+                pthread_mutex_unlock(data->output_mutex);
+                free(elevation_data);
+                elevation_data = NULL;
+                *(data->global_result) = 1;
                 return NULL;
             }
-            fi->ulFilesize = newFilesize;
+            fi->filesize = new_filesize;
 
-            pthread_mutex_lock(data->outputMutex);
+            pthread_mutex_lock(data->output_mutex);
             if (opts->verbose)
             {
                 fprintf(stderr, "INFO: Enhanced resolution: %zu×%zu pixels for %s\n",
-                        fi->iWidth, fi->iHeight, fi->szFilename);
+                        fi->width, fi->height, fi->filename);
             }
-            pthread_mutex_unlock(data->outputMutex);
+            pthread_mutex_unlock(data->output_mutex);
         }
         else
         {
-            pthread_mutex_lock(data->outputMutex);
+            pthread_mutex_lock(data->output_mutex);
             fprintf(stderr, "WARNING: Could not add procedural detail to %s, using original data\n",
-                    fi->szFilename);
-            pthread_mutex_unlock(data->outputMutex);
+                    fi->filename);
+            pthread_mutex_unlock(data->output_mutex);
         }
     }
 
     // Allocate memory for pixel data - depending on output format
-    size_t pixelCount;
-    if (!safe_multiply_size_t(fi->iWidth, fi->iHeight, &pixelCount))
+    size_t pixel_count;
+    if (!safe_multiply_size_t(fi->width, fi->height, &pixel_count))
     {
-        pthread_mutex_lock(data->outputMutex);
+        pthread_mutex_lock(data->output_mutex);
         fprintf(stderr, "Error: Pixel count overflow at %zu×%zu for %s\n",
-                fi->iWidth, fi->iHeight, fi->szFilename);
-        pthread_mutex_unlock(data->outputMutex);
-        free(iElevationData);
-        iElevationData = NULL;
-        *(data->globalResult) = 1;
+                fi->width, fi->height, fi->filename);
+        pthread_mutex_unlock(data->output_mutex);
+        free(elevation_data);
+        elevation_data = NULL;
+        *(data->global_result) = 1;
         return NULL;
     }
 
-    unsigned short *PixelData16 = NULL;
-    RGBA16 *PixelData16Alpha = NULL;
+    unsigned short *pixel_data_16 = NULL;
+    rgba16_t *pixel_data_16_alpha = NULL;
 
-    if (opts->output16bit && opts->alphaNoData)
+    if (opts->output_16bit && opts->alpha_nodata)
     {
         // 16-bit grayscale + alpha for transparent NoData
-        PixelData16Alpha = (RGBA16 *)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(RGBA16));
-        if (PixelData16Alpha == NULL)
+        pixel_data_16_alpha = (rgba16_t *)safe_malloc_pixels(fi->width, fi->height, sizeof(rgba16_t));
+        if (pixel_data_16_alpha == NULL)
         {
-            pthread_mutex_lock(data->outputMutex);
+            pthread_mutex_lock(data->output_mutex);
             fprintf(stderr, "Error: Can't allocate 16-bit RGBA pixel data block for %s (%zu×%zu pixels)\n",
-                    fi->szFilename, fi->iWidth, fi->iHeight);
-            pthread_mutex_unlock(data->outputMutex);
-            free(iElevationData);
-            iElevationData = NULL;
-            *(data->globalResult) = 1;
+                    fi->filename, fi->width, fi->height);
+            pthread_mutex_unlock(data->output_mutex);
+            free(elevation_data);
+            elevation_data = NULL;
+            *(data->global_result) = 1;
             return NULL;
         }
     }
-    else if (opts->output16bit)
+    else if (opts->output_16bit)
     {
         // 16-bit grayscale data with overflow-protected allocation
-        PixelData16 = (unsigned short *)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(unsigned short));
-        if (PixelData16 == NULL)
+        pixel_data_16 = (unsigned short *)safe_malloc_pixels(fi->width, fi->height, sizeof(unsigned short));
+        if (pixel_data_16 == NULL)
         {
-            pthread_mutex_lock(data->outputMutex);
+            pthread_mutex_lock(data->output_mutex);
             fprintf(stderr, "Error: Can't allocate 16-bit pixel data block for %s (%zu×%zu pixels)\n",
-                    fi->szFilename, fi->iWidth, fi->iHeight);
-            pthread_mutex_unlock(data->outputMutex);
-            free(iElevationData);
-            iElevationData = NULL;
-            *(data->globalResult) = 1;
+                    fi->filename, fi->width, fi->height);
+            pthread_mutex_unlock(data->output_mutex);
+            free(elevation_data);
+            elevation_data = NULL;
+            *(data->global_result) = 1;
             return NULL;
         }
     }
-    else if (opts->alphaNoData)
+    else if (opts->alpha_nodata)
     {
         // 8-bit RGBA data for alpha support with overflow-protected allocation
-        PixelDataRGBA = (RGBA *)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(struct tag_RGBA));
-        if (PixelDataRGBA == NULL)
+        pixel_data_rgba = (rgba_t *)safe_malloc_pixels(fi->width, fi->height, sizeof(struct tag_rgba));
+        if (pixel_data_rgba == NULL)
         {
-            pthread_mutex_lock(data->outputMutex);
+            pthread_mutex_lock(data->output_mutex);
             fprintf(stderr, "Error: Can't allocate RGBA pixel data block for %s (%zu×%zu pixels)\n",
-                    fi->szFilename, fi->iWidth, fi->iHeight);
-            pthread_mutex_unlock(data->outputMutex);
-            free(iElevationData);
-            iElevationData = NULL;
-            *(data->globalResult) = 1;
+                    fi->filename, fi->width, fi->height);
+            pthread_mutex_unlock(data->output_mutex);
+            free(elevation_data);
+            elevation_data = NULL;
+            *(data->global_result) = 1;
             return NULL;
         }
     }
     else
     {
         // 8-bit RGB data with overflow-protected allocation
-        PixelData = (RGB *)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(struct tag_RGB));
-        if (PixelData == NULL)
+        pixel_data = (rgb_t *)safe_malloc_pixels(fi->width, fi->height, sizeof(struct tag_rgb));
+        if (pixel_data == NULL)
         {
-            pthread_mutex_lock(data->outputMutex);
+            pthread_mutex_lock(data->output_mutex);
             fprintf(stderr, "Error: Can't allocate RGB pixel data block for %s (%zu×%zu pixels)\n",
-                    fi->szFilename, fi->iWidth, fi->iHeight);
-            pthread_mutex_unlock(data->outputMutex);
-            free(iElevationData);
-            iElevationData = NULL;
-            *(data->globalResult) = 1;
+                    fi->filename, fi->width, fi->height);
+            pthread_mutex_unlock(data->output_mutex);
+            free(elevation_data);
+            elevation_data = NULL;
+            *(data->global_result) = 1;
             return NULL;
         }
     }
 
     // Calculate effective min/max heights (custom range or auto-detection)
-    int effectiveMinHeight = (opts->minHeight != -1) ? opts->minHeight : iOverallMinElevation;
-    int effectiveMaxHeight = (opts->maxHeight != -1) ? opts->maxHeight : iOverallMaxElevation;
+    int effective_min_height = (opts->min_height != -1) ? opts->min_height : overall_min_elevation;
+    int effective_max_height = (opts->max_height != -1) ? opts->max_height : overall_max_elevation;
 
     // Safety check: Min < Max
-    if (effectiveMinHeight >= effectiveMaxHeight)
+    if (effective_min_height >= effective_max_height)
     {
-        effectiveMinHeight = iOverallMinElevation;
-        effectiveMaxHeight = iOverallMaxElevation;
+        effective_min_height = overall_min_elevation;
+        effective_max_height = overall_max_elevation;
     }
 
     // Convert elevation to pixels - depending on output format
     // OpenMP: SIMD vectorization for optimal performance with large images
-#pragma omp parallel for simd aligned(iElevationData : 32) if (pixelCount > 10000)
-    for (unsigned long m = 0; m < pixelCount; m++)
+#pragma omp parallel for simd aligned(elevation_data : 32) if (pixel_count > 10000)
+    for (unsigned long m = 0; m < pixel_count; m++)
     {
         // Check for NoData pixels (for alpha transparency)
-        int isNoDataPixel = (iElevationData[m] == NODATA_REPLACEMENT);
+        int is_nodata_pixel = (elevation_data[m] == NODATA_REPLACEMENT);
 
         // Normalization to 0.0-1.0 with custom range
-        float normalizedValue = 0.5f; // Fallback
-        if (effectiveMaxHeight > effectiveMinHeight)
+        float normalized_value = 0.5f; // Fallback
+        if (effective_max_height > effective_min_height)
         {
             // Clamp elevation to effective range
-            int clampedElevation = iElevationData[m];
-            if (clampedElevation < effectiveMinHeight)
-                clampedElevation = effectiveMinHeight;
-            if (clampedElevation > effectiveMaxHeight)
-                clampedElevation = effectiveMaxHeight;
+            int clamped_elevation = elevation_data[m];
+            if (clamped_elevation < effective_min_height)
+                clamped_elevation = effective_min_height;
+            if (clamped_elevation > effective_max_height)
+                clamped_elevation = effective_max_height;
 
-            normalizedValue = (float)(clampedElevation - effectiveMinHeight) /
-                              (float)(effectiveMaxHeight - effectiveMinHeight);
+            normalized_value = (float)(clamped_elevation - effective_min_height) /
+                              (float)(effective_max_height - effective_min_height);
         }
 
         // Apply curve mapping
-        float curvedValue = ApplyCurveMapping(normalizedValue, opts->curveType, opts->gamma);
+        float curved_value = apply_curve_mapping(normalized_value, opts->curve_type, opts->gamma);
 
-        if (opts->output16bit && opts->alphaNoData)
+        if (opts->output_16bit && opts->alpha_nodata)
         {
             // 16-bit grayscale + alpha: make NoData pixels transparent
-            uint16_t pixelValue = (uint16_t)(curvedValue * 65535.0f);
-            PixelData16Alpha[m].y = pixelValue;
-            PixelData16Alpha[m].a = isNoDataPixel ? 0 : 65535; // Transparent for NoData, opaque for valid data
+            uint16_t pixel_value = (uint16_t)(curved_value * 65535.0f);
+            pixel_data_16_alpha[m].y = pixel_value;
+            pixel_data_16_alpha[m].a = is_nodata_pixel ? 0 : 65535; // Transparent for NoData, opaque for valid data
         }
-        else if (opts->output16bit)
+        else if (opts->output_16bit)
         {
             // 16-bit grayscale: use full 16-bit range (0-65535)
-            PixelData16[m] = (unsigned short)(curvedValue * 65535.0f);
+            pixel_data_16[m] = (unsigned short)(curved_value * 65535.0f);
         }
-        else if (opts->alphaNoData)
+        else if (opts->alpha_nodata)
         {
             // 8-bit RGBA: with alpha channel for NoData transparency
-            unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
-            PixelDataRGBA[m].r = pixelValue;
-            PixelDataRGBA[m].g = pixelValue;
-            PixelDataRGBA[m].b = pixelValue;
-            PixelDataRGBA[m].a = isNoDataPixel ? 0 : 255; // Transparent for NoData, opaque for valid data
+            unsigned char pixel_value = (unsigned char)(curved_value * 255.0f);
+            pixel_data_rgba[m].r = pixel_value;
+            pixel_data_rgba[m].g = pixel_value;
+            pixel_data_rgba[m].b = pixel_value;
+            pixel_data_rgba[m].a = is_nodata_pixel ? 0 : 255; // Transparent for NoData, opaque for valid data
         }
         else
         {
             // 8-bit RGB: curve-corrected calculation
-            unsigned char pixelValue = (unsigned char)(curvedValue * 255.0f);
-            PixelData[m].r = PixelData[m].g = PixelData[m].b = pixelValue;
+            unsigned char pixel_value = (unsigned char)(curved_value * 255.0f);
+            pixel_data[m].r = pixel_data[m].g = pixel_data[m].b = pixel_value;
         }
     }
 
     // Generate PNG output filename (filename only, not full path)
-    generateOutputFilename(fi->szFilename, OutputHeightmapFile);
+    generate_output_filename(fi->filename, output_heightmap_file);
 
     // Write PNG (thread-safe with local PixelData)
-    pthread_mutex_lock(data->outputMutex);
-    if (opts->output16bit && opts->alphaNoData)
+    pthread_mutex_lock(data->output_mutex);
+    if (opts->output_16bit && opts->alpha_nodata)
     {
-        WritePNG16BitWithAlpha(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16Alpha);
+        write_png_16bit_with_alpha(output_heightmap_file, fi->width, fi->height, pixel_data_16_alpha);
     }
-    else if (opts->output16bit)
+    else if (opts->output_16bit)
     {
-        WritePNG16BitGrayscale(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData16);
+        write_png_16bit_grayscale(output_heightmap_file, fi->width, fi->height, pixel_data_16);
     }
-    else if (opts->alphaNoData)
+    else if (opts->alpha_nodata)
     {
-        WritePNGWithAlpha(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelDataRGBA);
+        write_png_with_alpha(output_heightmap_file, fi->width, fi->height, pixel_data_rgba);
     }
     else
     {
-        WritePNGWithData(OutputHeightmapFile, fi->iWidth, fi->iHeight, PixelData);
+        write_png_with_data(output_heightmap_file, fi->width, fi->height, pixel_data);
     }
 
     // Write metadata file (if enabled)
-    writeMetadataFile(OutputHeightmapFile, opts, fi, effectiveMinHeight, effectiveMaxHeight);
+    write_metadata_file(output_heightmap_file, opts, fi, effective_min_height, effective_max_height);
 
     // Generate vegetation mask (if enabled)
     if (opts->vegetation.enabled)
     {
         // We need to reload the elevation data for vegetation mask since we may have modified it
-        // Use the original elevation data stored in iElevationData before any processing
-        generate_vegetation_mask(fi, iElevationData, opts);
+        // Use the original elevation data stored in elevation_data before any processing
+        generate_vegetation_mask(fi, elevation_data, opts);
     }
 
-    pthread_mutex_unlock(data->outputMutex);
+    pthread_mutex_unlock(data->output_mutex);
 
     // Cleanup for this thread
-    free(iElevationData);
-    iElevationData = NULL;
-    if (opts->output16bit && opts->alphaNoData)
+    free(elevation_data);
+    elevation_data = NULL;
+    if (opts->output_16bit && opts->alpha_nodata)
     {
-        free(PixelData16Alpha);
-        PixelData16Alpha = NULL;
+        free(pixel_data_16_alpha);
+        pixel_data_16_alpha = NULL;
     }
-    else if (opts->output16bit)
+    else if (opts->output_16bit)
     {
-        free(PixelData16);
-        PixelData16 = NULL;
+        free(pixel_data_16);
+        pixel_data_16 = NULL;
     }
-    else if (opts->alphaNoData)
+    else if (opts->alpha_nodata)
     {
-        free(PixelDataRGBA); // Free thread-local RGBA data
-        PixelDataRGBA = NULL;
+        free(pixel_data_rgba); // Free thread-local RGBA data
+        pixel_data_rgba = NULL;
     }
     else
     {
-        free(PixelData); // Free thread-local PixelData
-        PixelData = NULL;
+        free(pixel_data); // Free thread-local PixelData
+        pixel_data = NULL;
     }
 
     // Update progress counter
-    pthread_mutex_lock(data->outputMutex);
-    (*(data->filesProcessed))++;
+    pthread_mutex_lock(data->output_mutex);
+    (*(data->files_processed))++;
     if (opts->verbose)
     {
-        fprintf(stderr, "INFO: Completed %d/%d files\n", *(data->filesProcessed), data->totalFiles);
+        fprintf(stderr, "INFO: Completed %d/%d files\n", *(data->files_processed), data->total_files);
     }
-    pthread_mutex_unlock(data->outputMutex);
+    pthread_mutex_unlock(data->output_mutex);
 
     return NULL;
 }
 
 // PARALLELIZED BATCH PROCESSING
-static int processFilesParallel(struct tag_FileInfoSRTM *fi, int iNumFilesToConvert, ProgramOptions opts)
+static int process_files_parallel(struct tag_file_info_srtm *fi, int num_files_to_convert, program_options_t opts)
 {
-    if (iNumFilesToConvert <= 1 || opts.numThreads <= 1)
+    if (num_files_to_convert <= 1 || opts.num_threads <= 1)
     {
         // Fallback to sequential processing for few files or 1 thread
-        return processFilesSequential(fi, iNumFilesToConvert, opts);
+        return process_files_sequential(fi, num_files_to_convert, opts);
     }
 
     pthread_t *threads;
-    ThreadData *threadData;
-    pthread_mutex_t outputMutex = PTHREAD_MUTEX_INITIALIZER;
-    int globalResult = 0;
-    int filesProcessed = 0;
+    thread_data_t *thread_data_arr;
+    pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
+    int global_result = 0;
+    int files_processed = 0;
 
     // Adapt number of threads to available files
-    int actualThreads = (opts.numThreads > iNumFilesToConvert) ? iNumFilesToConvert : opts.numThreads;
+    int actual_threads = (opts.num_threads > num_files_to_convert) ? num_files_to_convert : opts.num_threads;
 
     if (opts.verbose)
     {
         fprintf(stderr, "INFO: Starting parallel processing with %d threads for %d files\n",
-                actualThreads, iNumFilesToConvert);
+                actual_threads, num_files_to_convert);
     }
 
     // Allocate thread arrays
-    threads = (pthread_t *)malloc(actualThreads * sizeof(pthread_t));
-    threadData = (ThreadData *)malloc(iNumFilesToConvert * sizeof(ThreadData));
+    threads = (pthread_t *)malloc(actual_threads * sizeof(pthread_t));
+    thread_data_arr = (thread_data_t *)malloc(num_files_to_convert * sizeof(thread_data_t));
 
-    if (!threads || !threadData)
+    if (!threads || !thread_data_arr)
     {
         fprintf(stderr, "Error: Cannot allocate memory for threading\n");
         if (threads)
             free(threads);
-        if (threadData)
-            free(threadData);
+        if (thread_data_arr)
+            free(thread_data_arr);
         return 1;
     }
 
     // Prepare thread data for all files
-    for (int i = 0; i < iNumFilesToConvert; i++)
+    for (int i = 0; i < num_files_to_convert; i++)
     {
-        threadData[i].fileIndex = i;
-        threadData[i].fileInfo = fi;
-        threadData[i].opts = &opts;
-        threadData[i].globalResult = &globalResult;
-        threadData[i].outputMutex = &outputMutex;
-        threadData[i].filesProcessed = &filesProcessed;
-        threadData[i].totalFiles = iNumFilesToConvert;
+        thread_data_arr[i].file_index = i;
+        thread_data_arr[i].file_info = fi;
+        thread_data_arr[i].opts = &opts;
+        thread_data_arr[i].global_result = &global_result;
+        thread_data_arr[i].output_mutex = &output_mutex;
+        thread_data_arr[i].files_processed = &files_processed;
+        thread_data_arr[i].total_files = num_files_to_convert;
     }
 
     // Start threads in batches (thread pool simulation)
-    int fileIndex = 0;
-    while (fileIndex < iNumFilesToConvert && globalResult == 0)
+    int file_index = 0;
+    while (file_index < num_files_to_convert && global_result == 0)
     {
-        int threadsToStart = (iNumFilesToConvert - fileIndex > actualThreads) ? actualThreads : (iNumFilesToConvert - fileIndex);
+        int threads_to_start = (num_files_to_convert - file_index > actual_threads) ? actual_threads : (num_files_to_convert - file_index);
 
         // Start threads
-        for (int t = 0; t < threadsToStart; t++)
+        for (int t = 0; t < threads_to_start; t++)
         {
-            if (pthread_create(&threads[t], NULL, processFileWorker, &threadData[fileIndex + t]) != 0)
+            if (pthread_create(&threads[t], NULL, process_file_worker, &thread_data_arr[file_index + t]) != 0)
             {
                 fprintf(stderr, "Error: Cannot create thread %d\n", t);
-                globalResult = 1;
+                global_result = 1;
                 break;
             }
         }
 
         // Wait for all started threads
-        for (int t = 0; t < threadsToStart; t++)
+        for (int t = 0; t < threads_to_start; t++)
         {
             pthread_join(threads[t], NULL);
         }
 
-        fileIndex += threadsToStart;
+        file_index += threads_to_start;
     }
 
     // Cleanup
     free(threads);
-    free(threadData);
-    pthread_mutex_destroy(&outputMutex);
+    free(thread_data_arr);
+    pthread_mutex_destroy(&output_mutex);
 
     if (opts.verbose)
     {
         fprintf(stderr, "INFO: Parallel processing completed. Result: %s\n",
-                globalResult == 0 ? "SUCCESS" : "ERROR");
+                global_result == 0 ? "SUCCESS" : "ERROR");
     }
 
-    return globalResult;
+    return global_result;
 }
 
 // SEQUENTIAL PROCESSING (Fallback)
-static int processFilesSequential(struct tag_FileInfoSRTM *fi, int iNumFilesToConvert, ProgramOptions opts)
+static int process_files_sequential(struct tag_file_info_srtm *fi, int num_files_to_convert, program_options_t opts)
 {
     if (opts.verbose)
     {
-        fprintf(stderr, "INFO: Using sequential processing for %d files\n", iNumFilesToConvert);
+        fprintf(stderr, "INFO: Using sequential processing for %d files\n", num_files_to_convert);
     }
 
     // The original loop as a separate function
-    for (int k = 0; k < iNumFilesToConvert; k++)
+    for (int k = 0; k < num_files_to_convert; k++)
     {
         // Use worker logic, but without threading
-        ThreadData data;
-        data.fileIndex = k;
-        data.fileInfo = fi;
+        thread_data_t data;
+        data.file_index = k;
+        data.file_info = fi;
         data.opts = &opts;
         int result = 0;
-        data.globalResult = &result;
-        pthread_mutex_t dummyMutex = PTHREAD_MUTEX_INITIALIZER;
-        data.outputMutex = &dummyMutex;
+        data.global_result = &result;
+        pthread_mutex_t dummy_mutex = PTHREAD_MUTEX_INITIALIZER;
+        data.output_mutex = &dummy_mutex;
         int processed = k;
-        data.filesProcessed = &processed;
-        data.totalFiles = iNumFilesToConvert;
+        data.files_processed = &processed;
+        data.total_files = num_files_to_convert;
 
-        processFileWorker(&data);
+        process_file_worker(&data);
 
         if (result != 0)
         {
-            pthread_mutex_destroy(&dummyMutex);
+            pthread_mutex_destroy(&dummy_mutex);
             return result;
         }
-        pthread_mutex_destroy(&dummyMutex);
+        pthread_mutex_destroy(&dummy_mutex);
     }
 
     return 0;
@@ -1323,7 +1323,7 @@ static int processFilesSequential(struct tag_FileInfoSRTM *fi, int iNumFilesToCo
 // PROCEDURAL DETAIL GENERATION
 
 // Simple noise function (Perlin-like)
-static float SimpleNoise(int x, int y, int seed)
+static float simple_noise(int x, int y, int seed)
 {
     int n = x + y * 57 + seed * 131;
     n = (n << 13) ^ n;
@@ -1331,17 +1331,17 @@ static float SimpleNoise(int x, int y, int seed)
 }
 
 // Bilinear interpolation for noise sampling (eliminates quantization)
-static float BilinearNoiseInterpolate(float x, float y, int seed)
+static float bilinear_noise_interpolate(float x, float y, int seed)
 {
     int x0 = (int)floorf(x);
     int y0 = (int)floorf(y);
     float fx = x - x0;
     float fy = y - y0;
 
-    float v00 = SimpleNoise(x0, y0, seed);
-    float v10 = SimpleNoise(x0 + 1, y0, seed);
-    float v01 = SimpleNoise(x0, y0 + 1, seed);
-    float v11 = SimpleNoise(x0 + 1, y0 + 1, seed);
+    float v00 = simple_noise(x0, y0, seed);
+    float v10 = simple_noise(x0 + 1, y0, seed);
+    float v01 = simple_noise(x0, y0 + 1, seed);
+    float v11 = simple_noise(x0 + 1, y0 + 1, seed);
 
     float v0 = v00 * (1.0f - fx) + v10 * fx;
     float v1 = v01 * (1.0f - fx) + v11 * fx;
@@ -1350,27 +1350,27 @@ static float BilinearNoiseInterpolate(float x, float y, int seed)
 }
 
 // Fractal noise for different detail levels (with sub-pixel precision)
-static float FractalNoise(float x, float y, int octaves, float persistence, float scale, int seed)
+static float fractal_noise(float x, float y, int octaves, float persistence, float scale, int seed)
 {
     float total = 0.0f;
     float frequency = scale;
     float amplitude = 1.0f;
-    float maxValue = 0.0f;
+    float max_value = 0.0f;
 
     for (int i = 0; i < octaves; i++)
     {
         // Bilinear interpolation instead of integer casting eliminates quantization
-        total += BilinearNoiseInterpolate(x * frequency, y * frequency, seed + i) * amplitude;
-        maxValue += amplitude;
+        total += bilinear_noise_interpolate(x * frequency, y * frequency, seed + i) * amplitude;
+        max_value += amplitude;
         amplitude *= persistence;
         frequency *= 2.0f;
     }
 
-    return total / maxValue;
+    return total / max_value;
 }
 
 // Bilinear interpolation
-static short int BilinearInterpolate(const short int *data, int width, int height, float x, float y)
+static short int bilinear_interpolate(const short int *data, int width, int height, float x, float y)
 {
     int x1 = (int)x;
     int y1 = (int)y;
@@ -1405,13 +1405,13 @@ static short int BilinearInterpolate(const short int *data, int width, int heigh
 
 // Calculate local slope
 // Calculate pixel distance based on SRTM type
-static float GetPixelDistance(int srtmType)
+static float get_pixel_distance(int srtm_type)
 {
-    if (srtmType == SRTM3)
+    if (srtm_type == SRTM3)
     {
         return 60.0f; // 2 * 30m for SRTM-1 (1201x1201)
     }
-    else if (srtmType == SRTM1)
+    else if (srtm_type == SRTM1)
     {
         return 180.0f; // 2 * 90m for SRTM-3 (3601x3601)
     }
@@ -1422,7 +1422,7 @@ static float GetPixelDistance(int srtmType)
     }
 }
 
-static float CalculateLocalSlope(const short int *data, int width, int height, float x, float y, int srtmType)
+static float calculate_local_slope(const short int *data, int width, int height, float x, float y, int srtm_type)
 {
     int ix = (int)x;
     int iy = (int)y;
@@ -1435,9 +1435,9 @@ static float CalculateLocalSlope(const short int *data, int width, int height, f
     short int top = data[(iy - 1) * width + ix];
     short int bottom = data[(iy + 1) * width + ix];
 
-    float pixelDistance = GetPixelDistance(srtmType);
-    float dx = (right - left) / pixelDistance;
-    float dy = (bottom - top) / pixelDistance;
+    float pixel_distance = get_pixel_distance(srtm_type);
+    float dx = (right - left) / pixel_distance;
+    float dy = (bottom - top) / pixel_distance;
 
     float slope = sqrt(dx * dx + dy * dy) / 100.0f; // Normalized to 0-1
     if (slope > 1.0f)
@@ -1446,7 +1446,7 @@ static float CalculateLocalSlope(const short int *data, int width, int height, f
 }
 
 // Terrain-type-specific factors
-static float GetHeightTypeFactor(short int height)
+static float get_height_type_factor(short int height)
 {
     if (height < 100)
         return 0.5f; // Coastal plains - little detail
@@ -1461,28 +1461,28 @@ static float GetHeightTypeFactor(short int height)
 }
 
 // Curve mapping for various elevation-to-pixel transformations
-static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float gamma)
+static float apply_curve_mapping(float normalized_value, curve_type_t curve_type, float gamma)
 {
     // Input clipping
-    if (normalizedValue < 0.0f)
-        normalizedValue = 0.0f;
-    if (normalizedValue > 1.0f)
-        normalizedValue = 1.0f;
+    if (normalized_value < 0.0f)
+        normalized_value = 0.0f;
+    if (normalized_value > 1.0f)
+        normalized_value = 1.0f;
 
-    float result = normalizedValue;
+    float result = normalized_value;
 
-    switch (curveType)
+    switch (curve_type)
     {
     case CURVE_LINEAR:
         // Linear curve - no change
-        result = normalizedValue;
+        result = normalized_value;
         break;
 
     case CURVE_LOG:
         // Logarithmic curve - emphasizes low values
-        if (normalizedValue > 0.0f)
+        if (normalized_value > 0.0f)
         {
-            result = logf(1.0f + normalizedValue * 9.0f) / logf(10.0f); // log10(1 + x*9)
+            result = logf(1.0f + normalized_value * 9.0f) / logf(10.0f); // log10(1 + x*9)
         }
         else
         {
@@ -1507,7 +1507,7 @@ static float ApplyCurveMapping(float normalizedValue, CurveType curveType, float
 }
 
 // Extracts geographic bounds from HGT filenames (e.g. "N49E004.hgt" -> lat 49-50, lon 4-5)
-static int extractGeoBounds(const char *filename, float *south, float *north, float *west, float *east)
+static int extract_geo_bounds(const char *filename, float *south, float *north, float *west, float *east)
 {
     // Extract filename without path
     const char *basename = strrchr(filename, '/');
@@ -1521,34 +1521,34 @@ static int extractGeoBounds(const char *filename, float *south, float *north, fl
         return 0;
 
     // Parse latitude
-    char latHemisphere = basename[0];
-    if (latHemisphere != 'N' && latHemisphere != 'S')
+    char lat_hemisphere = basename[0];
+    if (lat_hemisphere != 'N' && lat_hemisphere != 'S')
         return 0;
 
-    int latDegrees = (basename[1] - '0') * 10 + (basename[2] - '0');
-    if (latDegrees < 0 || latDegrees > 90)
+    int lat_degrees = (basename[1] - '0') * 10 + (basename[2] - '0');
+    if (lat_degrees < 0 || lat_degrees > 90)
         return 0;
 
-    *south = (latHemisphere == 'N') ? (float)latDegrees : -(float)(latDegrees + 1);
-    *north = (latHemisphere == 'N') ? (float)(latDegrees + 1) : -(float)latDegrees;
+    *south = (lat_hemisphere == 'N') ? (float)lat_degrees : -(float)(lat_degrees + 1);
+    *north = (lat_hemisphere == 'N') ? (float)(lat_degrees + 1) : -(float)lat_degrees;
 
     // Parse longitude
-    char lonHemisphere = basename[3];
-    if (lonHemisphere != 'E' && lonHemisphere != 'W')
+    char lon_hemisphere = basename[3];
+    if (lon_hemisphere != 'E' && lon_hemisphere != 'W')
         return 0;
 
-    int lonDegrees = (basename[4] - '0') * 100 + (basename[5] - '0') * 10 + (basename[6] - '0');
-    if (lonDegrees < 0 || lonDegrees > 180)
+    int lon_degrees = (basename[4] - '0') * 100 + (basename[5] - '0') * 10 + (basename[6] - '0');
+    if (lon_degrees < 0 || lon_degrees > 180)
         return 0;
 
-    *west = (lonHemisphere == 'E') ? (float)lonDegrees : -(float)(lonDegrees + 1);
-    *east = (lonHemisphere == 'E') ? (float)(lonDegrees + 1) : -(float)lonDegrees;
+    *west = (lon_hemisphere == 'E') ? (float)lon_degrees : -(float)(lon_degrees + 1);
+    *east = (lon_hemisphere == 'E') ? (float)(lon_degrees + 1) : -(float)lon_degrees;
 
     return 1;
 }
 
 // HGT samples include both tile edges: row 0 is the north edge, the last row the south edge
-static float latitudeAtRow(float south, float north, size_t row, size_t height)
+static float latitude_at_row(float south, float north, size_t row, size_t height)
 {
     if (height < 2)
         return south;
@@ -1557,7 +1557,7 @@ static float latitudeAtRow(float south, float north, size_t row, size_t height)
 }
 
 // Points must be sorted by latitude with unique values; clamps to the end values outside their range
-static float aridityAtLat(const AridityPoint *points, int count, float lat)
+static float aridity_at_lat(const aridity_point_t *points, int count, float lat)
 {
     if (count <= 0)
         return 0.0f;
@@ -1576,26 +1576,26 @@ static float aridityAtLat(const AridityPoint *points, int count, float lat)
 }
 
 // Lowers the vegetation lines and sets the density multiplier in place for the given aridity
-static void applyAridity(VegetationParams *params, float aridity)
+static void apply_aridity(vegetation_params_t *params, float aridity)
 {
     // Keep at least 100 m between the minimum elevation and the tree line
-    float maxShift = params->treeLine - params->minElevation - 100.0f;
+    float max_shift = params->tree_line - params->min_elevation - 100.0f;
     float shift = ARIDITY_LINE_SHIFT * aridity;
-    if (shift > maxShift)
-        shift = maxShift;
+    if (shift > max_shift)
+        shift = max_shift;
     if (shift < 0.0f)
         shift = 0.0f;
 
-    params->treeLine -= shift;
-    params->bushLine -= shift;
-    params->grassLine -= shift;
-    params->maxElevation -= shift;
+    params->tree_line -= shift;
+    params->bush_line -= shift;
+    params->grass_line -= shift;
+    params->max_elevation -= shift;
 
-    params->densityScale = 1.0f - ARIDITY_DENSITY_REDUCTION * aridity;
+    params->density_scale = 1.0f - ARIDITY_DENSITY_REDUCTION * aridity;
 }
 
 // True if all four bilinear source samples are at or below sea level
-static int IsFlatSea(const short int *data, int width, int height, float x, float y)
+static int is_flat_sea(const short int *data, int width, int height, float x, float y)
 {
     int x1 = (int)x;
     int y1 = (int)y;
@@ -1616,117 +1616,117 @@ static int IsFlatSea(const short int *data, int width, int height, float x, floa
 }
 
 // Main function for Procedural Detail Generation
-static short int *AddProceduralDetail(const short int *originalData, int originalWidth, int originalHeight,
-                                      int scaleFactor, float detailIntensity, int seed, int srtmType, int flatSea)
+static short int *add_procedural_detail(const short int *originalData, int originalWidth, int originalHeight,
+                                      int scale_factor, float detail_intensity, int seed, int srtm_type, int flat_sea)
 {
 
-    size_t newWidth, newHeight;
+    size_t new_width, new_height;
 
     // Safe calculation of new dimensions with overflow protection
-    if (!safe_multiply_size_t((size_t)originalWidth, (size_t)scaleFactor, &newWidth) ||
-        !safe_multiply_size_t((size_t)originalHeight, (size_t)scaleFactor, &newHeight))
+    if (!safe_multiply_size_t((size_t)originalWidth, (size_t)scale_factor, &new_width) ||
+        !safe_multiply_size_t((size_t)originalHeight, (size_t)scale_factor, &new_height))
     {
         fprintf(stderr, "ERROR: Dimension overflow in procedural detail generation: %d×%d scale %d\n",
-                originalWidth, originalHeight, scaleFactor);
+                originalWidth, originalHeight, scale_factor);
         return NULL;
     }
 
     // Safe memory allocation with overflow protection
-    short int *detailedData = (short int *)safe_malloc_pixels(newWidth, newHeight, sizeof(short int));
-    if (!detailedData)
+    short int *detailed_data = (short int *)safe_malloc_pixels(new_width, new_height, sizeof(short int));
+    if (!detailed_data)
     {
         fprintf(stderr, "ERROR: Cannot allocate memory for detailed heightmap (%zu×%zu pixels)\n",
-                newWidth, newHeight);
+                new_width, new_height);
         return NULL;
     }
 
     fprintf(stderr, "INFO: Generating %zu×%zu detailed heightmap (intensity: %.1f)\n",
-            newWidth, newHeight, detailIntensity);
+            new_width, new_height, detail_intensity);
 
 // OpenMP: Parallel processing + SIMD vectorization for optimal performance
 // Distribute outer loop across multiple CPU cores
-#pragma omp parallel for schedule(dynamic, 64) if (newHeight > 1000)
-    for (size_t y = 0; y < newHeight; y++)
+#pragma omp parallel for schedule(dynamic, 64) if (new_height > 1000)
+    for (size_t y = 0; y < new_height; y++)
     {
         // Progress reporting (thread-safe, reduced frequency)
-        if (y % (newHeight / 10) == 0)
+        if (y % (new_height / 10) == 0)
         {
 #pragma omp critical
             {
-                fprintf(stderr, "INFO: Progress: %zu%%\n", (y * 100) / newHeight);
+                fprintf(stderr, "INFO: Progress: %zu%%\n", (y * 100) / new_height);
             }
         }
 
 // Optimize inner loop for SIMD vectorization
-#pragma omp simd aligned(detailedData : 32) safelen(16)
-        for (size_t x = 0; x < newWidth; x++)
+#pragma omp simd aligned(detailed_data : 32) safelen(16)
+        for (size_t x = 0; x < new_width; x++)
         {
             // Base height through bilinear interpolation
-            float srcX = (float)x / scaleFactor;
-            float srcY = (float)y / scaleFactor;
+            float src_x = (float)x / scale_factor;
+            float src_y = (float)y / scale_factor;
 
-            if (srcX >= originalWidth - 1)
-                srcX = originalWidth - 1.001f;
-            if (srcY >= originalHeight - 1)
-                srcY = originalHeight - 1.001f;
+            if (src_x >= originalWidth - 1)
+                src_x = originalWidth - 1.001f;
+            if (src_y >= originalHeight - 1)
+                src_y = originalHeight - 1.001f;
 
-            short int baseHeight = BilinearInterpolate(originalData, originalWidth, originalHeight, srcX, srcY);
+            short int base_height = bilinear_interpolate(originalData, originalWidth, originalHeight, src_x, src_y);
 
             // Add procedural detail
             // Different noise octaves for different detail sizes
-            float detailNoise1 = FractalNoise(x * 0.005f, y * 0.005f, 3, 0.5f, 1.0f, seed);     // Large features
-            float detailNoise2 = FractalNoise(x * 0.02f, y * 0.02f, 4, 0.6f, 1.0f, seed + 100); // Medium features
-            float detailNoise3 = FractalNoise(x * 0.08f, y * 0.08f, 2, 0.4f, 1.0f, seed + 200); // Fine details
+            float detail_noise_1 = fractal_noise(x * 0.005f, y * 0.005f, 3, 0.5f, 1.0f, seed);     // Large features
+            float detail_noise_2 = fractal_noise(x * 0.02f, y * 0.02f, 4, 0.6f, 1.0f, seed + 100); // Medium features
+            float detail_noise_3 = fractal_noise(x * 0.08f, y * 0.08f, 2, 0.4f, 1.0f, seed + 200); // Fine details
 
-            float combinedNoise = detailNoise1 * 0.5f + detailNoise2 * 0.3f + detailNoise3 * 0.2f;
+            float combined_noise = detail_noise_1 * 0.5f + detail_noise_2 * 0.3f + detail_noise_3 * 0.2f;
 
             // Height-dependent variation (flat areas = less detail, steep areas = more detail)
-            float localSlope = CalculateLocalSlope(originalData, originalWidth, originalHeight, srcX, srcY, srtmType);
-            float slopeMultiplier = 0.3f + (localSlope * 0.7f); // 0.3 to 1.0
+            float local_slope = calculate_local_slope(originalData, originalWidth, originalHeight, src_x, src_y, srtm_type);
+            float slope_multiplier = 0.3f + (local_slope * 0.7f); // 0.3 to 1.0
 
             // Adjust detail based on terrain type
-            float heightFactor = GetHeightTypeFactor(baseHeight);
+            float height_factor = get_height_type_factor(base_height);
 
             // Calculate final detail with sub-pixel precision
-            float detailVariation = combinedNoise * detailIntensity * slopeMultiplier * heightFactor;
+            float detail_variation = combined_noise * detail_intensity * slope_multiplier * height_factor;
 
             // Noise on open sea would create phantom islands
-            if (flatSea && IsFlatSea(originalData, originalWidth, originalHeight, srcX, srcY))
+            if (flat_sea && is_flat_sea(originalData, originalWidth, originalHeight, src_x, src_y))
             {
-                detailVariation = 0.0f;
+                detail_variation = 0.0f;
             }
 
             // Maintain float precision for final height (against terracing)
-            float finalHeight = (float)baseHeight + detailVariation;
+            float final_height = (float)base_height + detail_variation;
 
             // Ensure values stay within valid range
-            if (finalHeight < 0.0f)
-                finalHeight = 0.0f;
-            if (finalHeight > (float)_MAX_HEIGHT)
-                finalHeight = (float)_MAX_HEIGHT;
+            if (final_height < 0.0f)
+                final_height = 0.0f;
+            if (final_height > (float)_MAX_HEIGHT)
+                final_height = (float)_MAX_HEIGHT;
 
             // Rounding instead of truncation for better sub-pixel distribution
-            detailedData[y * newWidth + x] = (short int)(finalHeight + 0.5f);
+            detailed_data[y * new_width + x] = (short int)(final_height + 0.5f);
         }
     }
 
-    return detailedData;
+    return detailed_data;
 }
 
 // HELPER FUNCTIONS
 
 // Zeroes 8-connected land components (> 0 m) smaller than minPixels; components touching the tile border are kept.
-static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t minPixels, size_t *removedIslands)
+static int remove_small_islands(int16_t *data, size_t width, size_t height, size_t min_pixels, size_t *removed_islands)
 {
-    size_t pixelCount;
-    *removedIslands = 0;
+    size_t pixel_count;
+    *removed_islands = 0;
 
-    if (!safe_multiply_size_t(width, height, &pixelCount) || pixelCount > UINT32_MAX)
+    if (!safe_multiply_size_t(width, height, &pixel_count) || pixel_count > UINT32_MAX)
     {
         return -1;
     }
 
-    uint8_t *visited = (uint8_t *)calloc(pixelCount, sizeof(uint8_t));
+    uint8_t *visited = (uint8_t *)calloc(pixel_count, sizeof(uint8_t));
     uint32_t *queue = (uint32_t *)safe_malloc_pixels(width, height, sizeof(uint32_t));
     if (visited == NULL || queue == NULL)
     {
@@ -1735,7 +1735,7 @@ static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t
         return -1;
     }
 
-    for (size_t start = 0; start < pixelCount; start++)
+    for (size_t start = 0; start < pixel_count; start++)
     {
         if (visited[start] || data[start] <= 0)
         {
@@ -1744,7 +1744,7 @@ static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t
 
         size_t head = 0;
         size_t tail = 0;
-        int touchesBorder = 0;
+        int touches_border = 0;
 
         queue[tail++] = (uint32_t)start;
         visited[start] = 1;
@@ -1757,7 +1757,7 @@ static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t
 
             if (x == 0 || y == 0 || x == width - 1 || y == height - 1)
             {
-                touchesBorder = 1;
+                touches_border = 1;
             }
 
             for (int dy = -1; dy <= 1; dy++)
@@ -1784,13 +1784,13 @@ static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t
             }
         }
 
-        if (tail < minPixels && !touchesBorder)
+        if (tail < min_pixels && !touches_border)
         {
             for (size_t i = 0; i < tail; i++)
             {
                 data[queue[i]] = 0;
             }
-            (*removedIslands)++;
+            (*removed_islands)++;
         }
     }
 
@@ -1800,22 +1800,22 @@ static int removeSmallIslands(int16_t *data, size_t width, size_t height, size_t
 }
 
 // Extracts filename from path and generates PNG name in current directory
-static void generateOutputFilename(const char *inputPath, char *outputPath)
+static void generate_output_filename(const char *input_path, char *output_path)
 {
-    const char *filename = inputPath;
-    const char *lastSlash = strrchr(inputPath, '/');
+    const char *filename = input_path;
+    const char *last_slash = strrchr(input_path, '/');
 
     // If a path separator was found, take the part after it
-    if (lastSlash != NULL)
+    if (last_slash != NULL)
     {
-        filename = lastSlash + 1;
+        filename = last_slash + 1;
     }
 
     // Copy the filename and replace the extension
-    strcpy(outputPath, filename);
+    strcpy(output_path, filename);
 
     // Find the last .hgt extension and replace it with .png
-    char *extension = strrchr(outputPath, '.');
+    char *extension = strrchr(output_path, '.');
     if (extension != NULL && (strcmp(extension, ".hgt") == 0 || strcmp(extension, ".HGT") == 0))
     {
         strcpy(extension, ".png");
@@ -1823,17 +1823,17 @@ static void generateOutputFilename(const char *inputPath, char *outputPath)
     else
     {
         // If no .hgt extension was found, append .png
-        strcat(outputPath, ".png");
+        strcat(output_path, ".png");
     }
 }
 
 // NODATA HANDLING
 
 // Checks if a raw value is a NoData value (after endian conversion)
-static int isNoDataValue(int16_t value, int srtmType)
+static int is_nodata_value(int16_t value, int srtm_type)
 {
     // Only for SRTM data (30m/90m) NoData detection
-    if (srtmType != SRTM3 && srtmType != SRTM1)
+    if (srtm_type != SRTM3 && srtm_type != SRTM1)
     {
         return 0;
     }
@@ -1843,56 +1843,56 @@ static int isNoDataValue(int16_t value, int srtmType)
 }
 
 // Processes an elevation value: Network-to-Host Byte Order + NoData handling + Clamping
-static int16_t processElevationValue(int16_t rawValue, int srtmType, int *noDataCount)
+static int16_t process_elevation_value(int16_t raw_value, int srtm_type, int *nodata_count)
 {
     // 1. Endian conversion for SRTM data (Big Endian -> Host Endian)
-    int16_t hostValue = rawValue;
-    if (srtmType == SRTM3 || srtmType == SRTM1)
+    int16_t host_value = raw_value;
+    if (srtm_type == SRTM3 || srtm_type == SRTM1)
     {
-        hostValue = (int16_t)ntohs((uint16_t)rawValue); // Network (Big Endian) to Host
+        host_value = (int16_t)ntohs((uint16_t)raw_value); // Network (Big Endian) to Host
     }
 
     // 2. NoData detection after endian conversion
-    if (isNoDataValue(hostValue, srtmType))
+    if (is_nodata_value(host_value, srtm_type))
     {
-        if (noDataCount != NULL)
+        if (nodata_count != NULL)
         {
-            (*noDataCount)++;
+            (*nodata_count)++;
         }
         return NODATA_REPLACEMENT; // Replacement value for NoData
     }
 
     // 3. Clamping to valid elevation values
-    if (hostValue < 0)
-        hostValue = 0;
-    if (hostValue > _MAX_HEIGHT)
-        hostValue = _MAX_HEIGHT;
+    if (host_value < 0)
+        host_value = 0;
+    if (host_value > _MAX_HEIGHT)
+        host_value = _MAX_HEIGHT;
 
-    return hostValue;
+    return host_value;
 }
 
 // PARAMETER MANAGEMENT FUNCTIONS
 
 // Initialize default options
-static void initDefaultOptions(ProgramOptions *opts)
+static void init_default_options(program_options_t *opts)
 {
-    opts->scaleFactor = DEFAULT_SCALE_FACTOR;
-    opts->detailIntensity = DEFAULT_DETAIL_INTENSITY;
-    opts->noiseSeed = DEFAULT_NOISE_SEED;
-    opts->enableDetail = ENABLE_PROCEDURAL_DETAIL;
+    opts->scale_factor = DEFAULT_SCALE_FACTOR;
+    opts->detail_intensity = DEFAULT_DETAIL_INTENSITY;
+    opts->noise_seed = DEFAULT_NOISE_SEED;
+    opts->enable_detail = ENABLE_PROCEDURAL_DETAIL;
     opts->verbose = 1; // Default: Verbose output
-    opts->showHelp = 0;
-    opts->showVersion = 0;
-    opts->numThreads = DEFAULT_NUM_THREADS; // New option for thread count
-    opts->output16bit = 0;                  // Default: 8-bit RGB output
+    opts->show_help = 0;
+    opts->show_version = 0;
+    opts->num_threads = DEFAULT_NUM_THREADS; // New option for thread count
+    opts->output_16bit = 0;                  // Default: 8-bit RGB output
     opts->gamma = 1.0f;                     // Default: No gamma correction
-    opts->curveType = CURVE_LINEAR;         // Default: Linear curve
-    opts->minHeight = -1;                   // Auto-detection
-    opts->maxHeight = -1;                   // Auto-detection
-    opts->metadataFormat = METADATA_NONE;   // Default: No metadata
-    opts->alphaNoData = 0;                  // Default: No transparent NoData pixels
-    opts->removeIslands = 0;                // Default: Island removal disabled
-    opts->aridityPointCount = 0;            // Default: No aridity influence
+    opts->curve_type = CURVE_LINEAR;         // Default: Linear curve
+    opts->min_height = -1;                   // Auto-detection
+    opts->max_height = -1;                   // Auto-detection
+    opts->metadata_format = METADATA_NONE;   // Default: No metadata
+    opts->alpha_nodata = 0;                  // Default: No transparent NoData pixels
+    opts->remove_islands = 0;                // Default: Island removal disabled
+    opts->aridity_point_count = 0;            // Default: No aridity influence
 
     // Initialize vegetation mask parameters (disabled by default)
     opts->vegetation.enabled = 0;
@@ -1905,11 +1905,11 @@ static void initDefaultOptions(ProgramOptions *opts)
 }
 
 // Show help text
-static void showHelp(const char *programName)
+static void show_help(const char *program_name)
 {
     printf("hgt2png v1.5.1 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
-    printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", programName);
+    printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", program_name);
 
     printf("OPTIONS:\n");
     printf("  -s, --scale-factor <n>   Scale factor for resolution enhancement (default: %d)\n", DEFAULT_SCALE_FACTOR);
@@ -1942,17 +1942,17 @@ static void showHelp(const char *programName)
     printf("  -v, --version            Show version information\n\n");
 
     printf("INPUT:\n");
-    printf("  Single HGT file:         %s terrain.hgt\n", programName);
-    printf("  Multiple files (list):   %s filelist.txt\n\n", programName);
+    printf("  Single HGT file:         %s terrain.hgt\n", program_name);
+    printf("  Multiple files (list):   %s filelist.txt\n\n", program_name);
 
     printf("EXAMPLES:\n");
-    printf("  %s N48E011.hgt                          # Standard processing\n", programName);
-    printf("  %s -s 2 -i 25.0 N48E011.hgt             # 2x scale, high detail\n", programName);
-    printf("  %s -t 8 terrain_files.txt               # 8 parallel threads\n", programName);
-    printf("  %s -d -q terrain_files.txt              # No detail, quiet mode\n", programName);
-    printf("  %s --alpha-nodata --metadata json terrain.hgt  # Transparent NoData with metadata\n", programName);
-    printf("  %s --threads 4 --scale-factor 3 --detail-intensity 10  # Parallel + custom\n", programName);
-    printf("  %s --vegetation-mask --biome alpine terrain.hgt  # Generate Alpine vegetation mask\n\n", programName);
+    printf("  %s N48E011.hgt                          # Standard processing\n", program_name);
+    printf("  %s -s 2 -i 25.0 N48E011.hgt             # 2x scale, high detail\n", program_name);
+    printf("  %s -t 8 terrain_files.txt               # 8 parallel threads\n", program_name);
+    printf("  %s -d -q terrain_files.txt              # No detail, quiet mode\n", program_name);
+    printf("  %s --alpha-nodata --metadata json terrain.hgt  # Transparent NoData with metadata\n", program_name);
+    printf("  %s --threads 4 --scale-factor 3 --detail-intensity 10  # Parallel + custom\n", program_name);
+    printf("  %s --vegetation-mask --biome alpine terrain.hgt  # Generate Alpine vegetation mask\n\n", program_name);
 
     printf("OUTPUT:\n");
     printf("  Creates PNG files with same basename as input HGT files.\n");
@@ -1961,7 +1961,7 @@ static void showHelp(const char *programName)
 }
 
 // Show version
-static void showVersion(void)
+static void show_version(void)
 {
     printf("hgt2png v1.5.1\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
@@ -1970,9 +1970,9 @@ static void showVersion(void)
 }
 
 // Parses "<lat>:<aridity>,..." into points sorted by latitude; returns -1 on any error without touching the output
-static int parseLatAridity(const char *arg, AridityPoint *points, int *count)
+static int parse_lat_aridity(const char *arg, aridity_point_t *points, int *count)
 {
-    AridityPoint tmp[MAX_ARIDITY_POINTS];
+    aridity_point_t tmp[MAX_ARIDITY_POINTS];
     int n = 0;
     const char *p = arg;
 
@@ -2014,13 +2014,13 @@ static int parseLatAridity(const char *arg, AridityPoint *points, int *count)
         p++;
     }
 
-    memcpy(points, tmp, (size_t)n * sizeof(AridityPoint));
+    memcpy(points, tmp, (size_t)n * sizeof(aridity_point_t));
     *count = n;
     return 0;
 }
 
 // Parse command line arguments
-static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **inputFile)
+static int parse_arguments(int argc, char *argv[], program_options_t *opts, char **input_file)
 {
     int c;
     static struct option long_options[] = {
@@ -2051,8 +2051,8 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
         switch (c)
         {
         case 's':
-            opts->scaleFactor = atoi(optarg);
-            if (opts->scaleFactor < 1 || opts->scaleFactor > 10)
+            opts->scale_factor = atoi(optarg);
+            if (opts->scale_factor < 1 || opts->scale_factor > 10)
             {
                 fprintf(stderr, "Error: Scale factor must be between 1 and 10\n");
                 return 1;
@@ -2060,8 +2060,8 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
             break;
 
         case 'i':
-            opts->detailIntensity = atof(optarg);
-            if (opts->detailIntensity < 0.0f || opts->detailIntensity > 100.0f)
+            opts->detail_intensity = atof(optarg);
+            if (opts->detail_intensity < 0.0f || opts->detail_intensity > 100.0f)
             {
                 fprintf(stderr, "Error: Detail intensity must be between 0.0 and 100.0\n");
                 return 1;
@@ -2069,12 +2069,12 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
             break;
 
         case 'r':
-            opts->noiseSeed = atoi(optarg);
+            opts->noise_seed = atoi(optarg);
             break;
 
         case 't':
-            opts->numThreads = atoi(optarg);
-            if (opts->numThreads < 1 || opts->numThreads > 16)
+            opts->num_threads = atoi(optarg);
+            if (opts->num_threads < 1 || opts->num_threads > 16)
             {
                 fprintf(stderr, "Error: Number of threads must be between 1 and 16\n");
                 return 1;
@@ -2082,7 +2082,7 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
             break;
 
         case 'd':
-            opts->enableDetail = 0;
+            opts->enable_detail = 0;
             break;
 
         case 'q':
@@ -2090,11 +2090,11 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
             break;
 
         case '6':
-            opts->output16bit = 1;
+            opts->output_16bit = 1;
             break;
 
         case 'a':
-            opts->alphaNoData = 1;
+            opts->alpha_nodata = 1;
             break;
 
         case 'g':
@@ -2109,11 +2109,11 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
         case 'c':
             if (strcmp(optarg, "linear") == 0)
             {
-                opts->curveType = CURVE_LINEAR;
+                opts->curve_type = CURVE_LINEAR;
             }
             else if (strcmp(optarg, "log") == 0)
             {
-                opts->curveType = CURVE_LOG;
+                opts->curve_type = CURVE_LOG;
             }
             else
             {
@@ -2123,12 +2123,12 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
             break;
 
         case 'm':
-            opts->minHeight = atoi(optarg);
+            opts->min_height = atoi(optarg);
             break;
 
         case 'M':
-            opts->maxHeight = atoi(optarg);
-            if (opts->minHeight != -1 && opts->maxHeight != -1 && opts->maxHeight <= opts->minHeight)
+            opts->max_height = atoi(optarg);
+            if (opts->min_height != -1 && opts->max_height != -1 && opts->max_height <= opts->min_height)
             {
                 fprintf(stderr, "Error: max-height must be greater than min-height\n");
                 return 1;
@@ -2138,15 +2138,15 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
         case 'x':
             if (strcmp(optarg, "json") == 0)
             {
-                opts->metadataFormat = METADATA_JSON;
+                opts->metadata_format = METADATA_JSON;
             }
             else if (strcmp(optarg, "txt") == 0)
             {
-                opts->metadataFormat = METADATA_TXT;
+                opts->metadata_format = METADATA_TXT;
             }
             else if (strcmp(optarg, "none") == 0)
             {
-                opts->metadataFormat = METADATA_NONE;
+                opts->metadata_format = METADATA_NONE;
             }
             else
             {
@@ -2197,18 +2197,18 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
 
         case 'I':
         {
-            long minPixels = atol(optarg);
-            if (minPixels < 1 || minPixels > 100000000L)
+            long min_pixels = atol(optarg);
+            if (min_pixels < 1 || min_pixels > 100000000L)
             {
                 fprintf(stderr, "Error: remove-islands must be between 1 and 100000000 pixels\n");
                 return 1;
             }
-            opts->removeIslands = (size_t)minPixels;
+            opts->remove_islands = (size_t)min_pixels;
             break;
         }
 
         case 'L':
-            if (parseLatAridity(optarg, opts->aridityPoints, &opts->aridityPointCount) != 0)
+            if (parse_lat_aridity(optarg, opts->aridity_points, &opts->aridity_point_count) != 0)
             {
                 fprintf(stderr, "Error: lat-aridity must be '<lat>:<aridity>,...' with lat -90..90, aridity 0..1, "
                                 "unique latitudes and at most %d points\n", MAX_ARIDITY_POINTS);
@@ -2225,18 +2225,18 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
                 fprintf(stderr, "Error: aridity must be a number between 0.0 and 1.0\n");
                 return 1;
             }
-            opts->aridityPoints[0].lat = 0.0f;
-            opts->aridityPoints[0].value = (float)aridity;
-            opts->aridityPointCount = 1;
+            opts->aridity_points[0].lat = 0.0f;
+            opts->aridity_points[0].value = (float)aridity;
+            opts->aridity_point_count = 1;
             break;
         }
 
         case 'h':
-            opts->showHelp = 1;
+            opts->show_help = 1;
             return 0;
 
         case 'v':
-            opts->showVersion = 1;
+            opts->show_version = 1;
             return 0;
 
         case '?':
@@ -2251,29 +2251,29 @@ static int parseArguments(int argc, char *argv[], ProgramOptions *opts, char **i
     // Input-Datei aus den verbleibenden Argumenten
     if (optind < argc)
     {
-        *inputFile = argv[optind];
+        *input_file = argv[optind];
     }
 
     return 0;
 }
 
 // Writes metadata sidecar file for precise Blender scaling
-static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opts, const struct tag_FileInfoSRTM *fi,
-                              int effectiveMinHeight, int effectiveMaxHeight)
+static void write_metadata_file(const char *png_filename, const program_options_t *opts, const struct tag_file_info_srtm *fi,
+                              int effective_min_height, int effective_max_height)
 {
 
-    if (opts->metadataFormat == METADATA_NONE)
+    if (opts->metadata_format == METADATA_NONE)
         return;
 
     // Generate metadata filename
-    char metadataFilename[512];
-    strcpy(metadataFilename, pngFilename);
+    char metadata_filename[512];
+    strcpy(metadata_filename, png_filename);
 
     // Replace PNG extension
-    char *dot = strrchr(metadataFilename, '.');
+    char *dot = strrchr(metadata_filename, '.');
     if (dot)
     {
-        if (opts->metadataFormat == METADATA_JSON)
+        if (opts->metadata_format == METADATA_JSON)
         {
             strcpy(dot, ".json");
         }
@@ -2284,126 +2284,126 @@ static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opt
     }
     else
     {
-        if (opts->metadataFormat == METADATA_JSON)
+        if (opts->metadata_format == METADATA_JSON)
         {
-            strcat(metadataFilename, ".json");
+            strcat(metadata_filename, ".json");
         }
         else
         {
-            strcat(metadataFilename, ".txt");
+            strcat(metadata_filename, ".txt");
         }
     }
 
     // Extract geographic bounds
     float south, north, west, east;
-    int hasGeoBounds = extractGeoBounds(fi->szFilename, &south, &north, &west, &east);
+    int has_geo_bounds = extract_geo_bounds(fi->filename, &south, &north, &west, &east);
 
     // Calculate pixel pitch (meters per pixel)
-    float pixelPitchMeters = 30.0f; // Default SRTM-1
-    if (fi->srtmType == SRTM1)
+    float pixel_pitch_meters = 30.0f; // Default SRTM-1
+    if (fi->srtm_type == SRTM1)
     {
-        pixelPitchMeters = 90.0f; // SRTM-3
+        pixel_pitch_meters = 90.0f; // SRTM-3
     }
-    else if (fi->srtmType == SRTM3)
+    else if (fi->srtm_type == SRTM3)
     {
-        pixelPitchMeters = 30.0f; // SRTM-1
+        pixel_pitch_meters = 30.0f; // SRTM-1
     }
 
     // With procedural detail: divide pixel pitch by scale factor
-    if (opts->enableDetail && opts->scaleFactor > 1)
+    if (opts->enable_detail && opts->scale_factor > 1)
     {
-        pixelPitchMeters /= (float)opts->scaleFactor;
+        pixel_pitch_meters /= (float)opts->scale_factor;
     }
 
-    FILE *metadataFile = fopen(metadataFilename, "w");
-    if (!metadataFile)
+    FILE *metadata_file = fopen(metadata_filename, "w");
+    if (!metadata_file)
     {
-        fprintf(stderr, "WARNING: Could not write metadata file %s\n", metadataFilename);
+        fprintf(stderr, "WARNING: Could not write metadata file %s\n", metadata_filename);
         return;
     }
 
-    if (opts->metadataFormat == METADATA_JSON)
+    if (opts->metadata_format == METADATA_JSON)
     {
         // JSON format for machine processing
-        fprintf(metadataFile, "{\n");
-        fprintf(metadataFile, "  \"source_file\": \"%s\",\n", fi->szFilename);
-        fprintf(metadataFile, "  \"png_file\": \"%s\",\n", pngFilename);
-        fprintf(metadataFile, "  \"dimensions\": {\n");
-        fprintf(metadataFile, "    \"width\": %zu,\n", fi->iWidth);
-        fprintf(metadataFile, "    \"height\": %zu\n", fi->iHeight);
-        fprintf(metadataFile, "  },\n");
-        fprintf(metadataFile, "  \"elevation\": {\n");
-        fprintf(metadataFile, "    \"min_meters\": %d,\n", effectiveMinHeight);
-        fprintf(metadataFile, "    \"max_meters\": %d,\n", effectiveMaxHeight);
-        fprintf(metadataFile, "    \"range_meters\": %d,\n", effectiveMaxHeight - effectiveMinHeight);
-        fprintf(metadataFile, "    \"original_min\": %d,\n", fi->iMinElevation);
-        fprintf(metadataFile, "    \"original_max\": %d\n", fi->iMaxElevation);
-        fprintf(metadataFile, "  },\n");
-        fprintf(metadataFile, "  \"scaling\": {\n");
-        fprintf(metadataFile, "    \"pixel_pitch_meters\": %.6f,\n", pixelPitchMeters);
-        fprintf(metadataFile, "    \"scale_factor\": %d,\n", opts->scaleFactor);
-        fprintf(metadataFile, "    \"world_size_meters\": {\n");
-        fprintf(metadataFile, "      \"width\": %.2f,\n", fi->iWidth * pixelPitchMeters);
-        fprintf(metadataFile, "      \"height\": %.2f\n", fi->iHeight * pixelPitchMeters);
-        fprintf(metadataFile, "    }\n");
-        fprintf(metadataFile, "  }");
+        fprintf(metadata_file, "{\n");
+        fprintf(metadata_file, "  \"source_file\": \"%s\",\n", fi->filename);
+        fprintf(metadata_file, "  \"png_file\": \"%s\",\n", png_filename);
+        fprintf(metadata_file, "  \"dimensions\": {\n");
+        fprintf(metadata_file, "    \"width\": %zu,\n", fi->width);
+        fprintf(metadata_file, "    \"height\": %zu\n", fi->height);
+        fprintf(metadata_file, "  },\n");
+        fprintf(metadata_file, "  \"elevation\": {\n");
+        fprintf(metadata_file, "    \"min_meters\": %d,\n", effective_min_height);
+        fprintf(metadata_file, "    \"max_meters\": %d,\n", effective_max_height);
+        fprintf(metadata_file, "    \"range_meters\": %d,\n", effective_max_height - effective_min_height);
+        fprintf(metadata_file, "    \"original_min\": %d,\n", fi->min_elevation);
+        fprintf(metadata_file, "    \"original_max\": %d\n", fi->max_elevation);
+        fprintf(metadata_file, "  },\n");
+        fprintf(metadata_file, "  \"scaling\": {\n");
+        fprintf(metadata_file, "    \"pixel_pitch_meters\": %.6f,\n", pixel_pitch_meters);
+        fprintf(metadata_file, "    \"scale_factor\": %d,\n", opts->scale_factor);
+        fprintf(metadata_file, "    \"world_size_meters\": {\n");
+        fprintf(metadata_file, "      \"width\": %.2f,\n", fi->width * pixel_pitch_meters);
+        fprintf(metadata_file, "      \"height\": %.2f\n", fi->height * pixel_pitch_meters);
+        fprintf(metadata_file, "    }\n");
+        fprintf(metadata_file, "  }");
 
-        if (hasGeoBounds)
+        if (has_geo_bounds)
         {
-            fprintf(metadataFile, ",\n");
-            fprintf(metadataFile, "  \"geographic\": {\n");
-            fprintf(metadataFile, "    \"bounds\": {\n");
-            fprintf(metadataFile, "      \"south\": %.6f,\n", south);
-            fprintf(metadataFile, "      \"north\": %.6f,\n", north);
-            fprintf(metadataFile, "      \"west\": %.6f,\n", west);
-            fprintf(metadataFile, "      \"east\": %.6f\n", east);
-            fprintf(metadataFile, "    },\n");
-            fprintf(metadataFile, "    \"center\": {\n");
-            fprintf(metadataFile, "      \"latitude\": %.6f,\n", (south + north) / 2.0f);
-            fprintf(metadataFile, "      \"longitude\": %.6f\n", (west + east) / 2.0f);
-            fprintf(metadataFile, "    }\n");
-            fprintf(metadataFile, "  }\n");
+            fprintf(metadata_file, ",\n");
+            fprintf(metadata_file, "  \"geographic\": {\n");
+            fprintf(metadata_file, "    \"bounds\": {\n");
+            fprintf(metadata_file, "      \"south\": %.6f,\n", south);
+            fprintf(metadata_file, "      \"north\": %.6f,\n", north);
+            fprintf(metadata_file, "      \"west\": %.6f,\n", west);
+            fprintf(metadata_file, "      \"east\": %.6f\n", east);
+            fprintf(metadata_file, "    },\n");
+            fprintf(metadata_file, "    \"center\": {\n");
+            fprintf(metadata_file, "      \"latitude\": %.6f,\n", (south + north) / 2.0f);
+            fprintf(metadata_file, "      \"longitude\": %.6f\n", (west + east) / 2.0f);
+            fprintf(metadata_file, "    }\n");
+            fprintf(metadata_file, "  }\n");
         }
         else
         {
-            fprintf(metadataFile, "\n");
+            fprintf(metadata_file, "\n");
         }
 
-        fprintf(metadataFile, "}\n");
+        fprintf(metadata_file, "}\n");
     }
     else
     {
         // TXT format for human readability
-        fprintf(metadataFile, "HGT2PNG Metadata\n");
-        fprintf(metadataFile, "================\n\n");
-        fprintf(metadataFile, "Source File: %s\n", fi->szFilename);
-        fprintf(metadataFile, "PNG File: %s\n", pngFilename);
-        fprintf(metadataFile, "\nImage Dimensions:\n");
-        fprintf(metadataFile, "  Width:  %zu pixels\n", fi->iWidth);
-        fprintf(metadataFile, "  Height: %zu pixels\n", fi->iHeight);
-        fprintf(metadataFile, "\nElevation Data:\n");
-        fprintf(metadataFile, "  Effective Range: %d - %d meters\n", effectiveMinHeight, effectiveMaxHeight);
-        fprintf(metadataFile, "  Original Range:  %d - %d meters\n", fi->iMinElevation, fi->iMaxElevation);
-        fprintf(metadataFile, "  Total Range:     %d meters\n", effectiveMaxHeight - effectiveMinHeight);
-        fprintf(metadataFile, "\nBlender Scaling (Displacement Setup):\n");
-        fprintf(metadataFile, "  Pixel Pitch: %.6f meters/pixel\n", pixelPitchMeters);
-        fprintf(metadataFile, "  World Size:  %.2f x %.2f meters\n",
-                fi->iWidth * pixelPitchMeters, fi->iHeight * pixelPitchMeters);
-        fprintf(metadataFile, "  Scale Factor: %d\n", opts->scaleFactor);
+        fprintf(metadata_file, "HGT2PNG Metadata\n");
+        fprintf(metadata_file, "================\n\n");
+        fprintf(metadata_file, "Source File: %s\n", fi->filename);
+        fprintf(metadata_file, "PNG File: %s\n", png_filename);
+        fprintf(metadata_file, "\nImage Dimensions:\n");
+        fprintf(metadata_file, "  Width:  %zu pixels\n", fi->width);
+        fprintf(metadata_file, "  Height: %zu pixels\n", fi->height);
+        fprintf(metadata_file, "\nElevation Data:\n");
+        fprintf(metadata_file, "  Effective Range: %d - %d meters\n", effective_min_height, effective_max_height);
+        fprintf(metadata_file, "  Original Range:  %d - %d meters\n", fi->min_elevation, fi->max_elevation);
+        fprintf(metadata_file, "  Total Range:     %d meters\n", effective_max_height - effective_min_height);
+        fprintf(metadata_file, "\nBlender Scaling (Displacement Setup):\n");
+        fprintf(metadata_file, "  Pixel Pitch: %.6f meters/pixel\n", pixel_pitch_meters);
+        fprintf(metadata_file, "  World Size:  %.2f x %.2f meters\n",
+                fi->width * pixel_pitch_meters, fi->height * pixel_pitch_meters);
+        fprintf(metadata_file, "  Scale Factor: %d\n", opts->scale_factor);
 
-        if (hasGeoBounds)
+        if (has_geo_bounds)
         {
-            fprintf(metadataFile, "\nGeographic Coordinates:\n");
-            fprintf(metadataFile, "  Bounds: %.6f°N to %.6f°N, %.6f°E to %.6f°E\n", south, north, west, east);
-            fprintf(metadataFile, "  Center: %.6f°N, %.6f°E\n", (south + north) / 2.0f, (west + east) / 2.0f);
+            fprintf(metadata_file, "\nGeographic Coordinates:\n");
+            fprintf(metadata_file, "  Bounds: %.6f°N to %.6f°N, %.6f°E to %.6f°E\n", south, north, west, east);
+            fprintf(metadata_file, "  Center: %.6f°N, %.6f°E\n", (south + north) / 2.0f, (west + east) / 2.0f);
         }
     }
 
-    fclose(metadataFile);
+    fclose(metadata_file);
 
     if (opts->verbose)
     {
-        fprintf(stderr, "INFO: Wrote metadata file %s\n", metadataFilename);
+        fprintf(stderr, "INFO: Wrote metadata file %s\n", metadata_filename);
     }
 }
 
@@ -2416,18 +2416,18 @@ static void writeMetadataFile(const char *pngFilename, const ProgramOptions *opt
  * Initialize Alpine biome parameters with realistic values
  * Based on European Alps vegetation zones and ecological data
  */
-static void initialize_alpine_biome(VegetationParams *params)
+static void initialize_alpine_biome(vegetation_params_t *params)
 {
     params->enabled = 1;
-    params->minElevation = ALPINE_MIN_ELEVATION;     // 700m - montane forest zone
-    params->maxElevation = ALPINE_MAX_ELEVATION;     // 2400m - above tree line
-    params->maxSlope = ALPINE_MAX_SLOPE;             // 45° maximum for vegetation
-    params->treeLine = ALPINE_TREE_LINE;             // 1800m - spruce/larch limit
-    params->bushLine = ALPINE_BUSH_LINE;             // 2200m - dwarf pine/rhododendron
-    params->grassLine = ALPINE_GRASS_LINE;           // 2400m - alpine meadows
-    params->aspectModifier = ALPINE_ASPECT_MODIFIER; // 0.2 - moderate aspect influence
-    params->drainageBonus = ALPINE_DRAINAGE_BONUS;   // 0.3 - valleys have more vegetation
-    params->densityScale = 1.0f;
+    params->min_elevation = ALPINE_MIN_ELEVATION;     // 700m - montane forest zone
+    params->max_elevation = ALPINE_MAX_ELEVATION;     // 2400m - above tree line
+    params->max_slope = ALPINE_MAX_SLOPE;             // 45° maximum for vegetation
+    params->tree_line = ALPINE_TREE_LINE;             // 1800m - spruce/larch limit
+    params->bush_line = ALPINE_BUSH_LINE;             // 2200m - dwarf pine/rhododendron
+    params->grass_line = ALPINE_GRASS_LINE;           // 2400m - alpine meadows
+    params->aspect_modifier = ALPINE_ASPECT_MODIFIER; // 0.2 - moderate aspect influence
+    params->drainage_bonus = ALPINE_DRAINAGE_BONUS;   // 0.3 - valleys have more vegetation
+    params->density_scale = 1.0f;
 }
 
 /**
@@ -2435,18 +2435,18 @@ static void initialize_alpine_biome(VegetationParams *params)
  * Based on Central European lowlands and mid-elevation zones
  * Typical regions: Germany, France, UK, Eastern USA, etc.
  */
-static void initialize_temperate_biome(VegetationParams *params)
+static void initialize_temperate_biome(vegetation_params_t *params)
 {
     params->enabled = 1;
-    params->minElevation = TEMPERATE_MIN_ELEVATION;     // 0m - sea level
-    params->maxElevation = TEMPERATE_MAX_ELEVATION;     // 1500m - upper limit
-    params->maxSlope = TEMPERATE_MAX_SLOPE;             // 50° maximum for vegetation
-    params->treeLine = TEMPERATE_TREE_LINE;             // 1200m - deciduous forest limit
-    params->bushLine = TEMPERATE_BUSH_LINE;             // 1400m - shrub zone
-    params->grassLine = TEMPERATE_GRASS_LINE;           // 1500m - grassland limit
-    params->aspectModifier = TEMPERATE_ASPECT_MODIFIER; // 0.15 - less aspect influence
-    params->drainageBonus = TEMPERATE_DRAINAGE_BONUS;   // 0.4 - strong drainage effect
-    params->densityScale = 1.0f;
+    params->min_elevation = TEMPERATE_MIN_ELEVATION;     // 0m - sea level
+    params->max_elevation = TEMPERATE_MAX_ELEVATION;     // 1500m - upper limit
+    params->max_slope = TEMPERATE_MAX_SLOPE;             // 50° maximum for vegetation
+    params->tree_line = TEMPERATE_TREE_LINE;             // 1200m - deciduous forest limit
+    params->bush_line = TEMPERATE_BUSH_LINE;             // 1400m - shrub zone
+    params->grass_line = TEMPERATE_GRASS_LINE;           // 1500m - grassland limit
+    params->aspect_modifier = TEMPERATE_ASPECT_MODIFIER; // 0.15 - less aspect influence
+    params->drainage_bonus = TEMPERATE_DRAINAGE_BONUS;   // 0.4 - strong drainage effect
+    params->density_scale = 1.0f;
 }
 
 /**
@@ -2566,7 +2566,7 @@ static float calculate_drainage_factor(const int16_t *elevation_data, size_t wid
  * Implements realistic Alpine vegetation distribution patterns
  */
 static uint8_t calculate_vegetation_density_alpine(float elevation, float slope, float aspect,
-                                                   float drainage, const VegetationParams *params)
+                                                   float drainage, const vegetation_params_t *params)
 {
     if (!params->enabled)
         return 0;
@@ -2574,29 +2574,29 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
     // Base elevation factor - MORE REALISTIC DISTRIBUTION
     float elevation_factor = 0.0f;
 
-    if (elevation < params->minElevation)
+    if (elevation < params->min_elevation)
     {
         elevation_factor = 0.0f; // Below vegetation zone
     }
-    else if (elevation <= params->treeLine)
+    else if (elevation <= params->tree_line)
     {
         // Montane forest zone (700-1800m) - dense vegetation
-        float range = params->treeLine - params->minElevation;
-        float position = (elevation - params->minElevation) / range;
+        float range = params->tree_line - params->min_elevation;
+        float position = (elevation - params->min_elevation) / range;
         elevation_factor = 0.6f + position * 0.4f; // 60-100% density (peak at tree line)
     }
-    else if (elevation <= params->bushLine)
+    else if (elevation <= params->bush_line)
     {
         // Subalpine zone (1800-2200m) - shrubs and dwarf trees
-        float range = params->bushLine - params->treeLine;
-        float position = (elevation - params->treeLine) / range;
+        float range = params->bush_line - params->tree_line;
+        float position = (elevation - params->tree_line) / range;
         elevation_factor = 0.8f - position * 0.5f; // 80% down to 30% density
     }
-    else if (elevation <= params->grassLine)
+    else if (elevation <= params->grass_line)
     {
         // Alpine zone (2200-2400m) - alpine meadows and cushion plants
-        float range = params->grassLine - params->bushLine;
-        float position = (elevation - params->bushLine) / range;
+        float range = params->grass_line - params->bush_line;
+        float position = (elevation - params->bush_line) / range;
         elevation_factor = 0.3f - position * 0.25f; // 30% down to 5% density
     }
     else
@@ -2606,14 +2606,14 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
 
     // Slope factor - steeper slopes have less vegetation - MORE RESTRICTIVE
     float slope_factor = 1.0f;
-    if (slope > params->maxSlope)
+    if (slope > params->max_slope)
     {
         slope_factor = 0.0f; // Too steep for vegetation
     }
     else if (slope > 25.0f)  // Start reducing at 25° instead of 30°
     {
         // More aggressive slope reduction: 25°-45° range
-        float slope_range = params->maxSlope - 25.0f;
+        float slope_range = params->max_slope - 25.0f;
         float slope_excess = slope - 25.0f;
         slope_factor = 1.0f - (slope_excess / slope_range) * 0.9f; // 90% reduction, not 80%
     }
@@ -2629,19 +2629,19 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
     {
         // South-facing slopes (135°-225°) - significantly drier at high elevation
         float elevation_factor_aspect = elevation > 1500.0f ? 1.5f : 1.0f; // More effect at higher elevation
-        aspect_factor = 1.0f - (params->aspectModifier * elevation_factor_aspect);
+        aspect_factor = 1.0f - (params->aspect_modifier * elevation_factor_aspect);
     }
     else if (aspect >= 315.0f || aspect <= 45.0f)
     {
         // North-facing slopes (315°-45°) - moister, better for vegetation
-        aspect_factor = 1.0f + params->aspectModifier;
+        aspect_factor = 1.0f + params->aspect_modifier;
     }
 
     // Drainage factor bonus for valleys - REDUCED EFFECT
-    float drainage_factor = 1.0f + (drainage * params->drainageBonus);
+    float drainage_factor = 1.0f + (drainage * params->drainage_bonus);
 
     // Combine all factors - ADD MINIMUM THRESHOLD
-    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor * params->densityScale;
+    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor * params->density_scale;
 
     // Apply minimum threshold - no vegetation below 5% density
     if (final_density < 0.05f)
@@ -2663,7 +2663,7 @@ static uint8_t calculate_vegetation_density_alpine(float elevation, float slope,
  * Suitable for: Central Europe, Eastern USA, UK, temperate Asia
  */
 static uint8_t calculate_vegetation_density_temperate(float elevation, float slope, float aspect,
-                                                      float drainage, const VegetationParams *params)
+                                                      float drainage, const vegetation_params_t *params)
 {
     if (!params->enabled)
         return 0;
@@ -2672,34 +2672,34 @@ static uint8_t calculate_vegetation_density_temperate(float elevation, float slo
     // Temperate zones have dense vegetation at low elevations, decreasing with height
     float elevation_factor = 0.0f;
 
-    if (elevation < params->minElevation)
+    if (elevation < params->min_elevation)
     {
         elevation_factor = 0.0f; // Below sea level (rare)
     }
-    else if (elevation <= params->treeLine)
+    else if (elevation <= params->tree_line)
     {
         // Lowland to mid-elevation forest zone (0-1200m) - very dense vegetation
         // Peak density at mid-elevations (400-800m), slightly less at very low elevations
-        float range = params->treeLine - params->minElevation;
-        float position = (elevation - params->minElevation) / range;
+        float range = params->tree_line - params->min_elevation;
+        float position = (elevation - params->min_elevation) / range;
         
         // Parabolic distribution: peak at 0.5 position (~600m)
         float optimal_position = 0.5f;
         float distance_from_optimal = fabsf(position - optimal_position);
         elevation_factor = 0.95f - distance_from_optimal * 0.25f; // 70-95% density
     }
-    else if (elevation <= params->bushLine)
+    else if (elevation <= params->bush_line)
     {
         // Transition zone (1200-1400m) - mixed forest/shrubs
-        float range = params->bushLine - params->treeLine;
-        float position = (elevation - params->treeLine) / range;
+        float range = params->bush_line - params->tree_line;
+        float position = (elevation - params->tree_line) / range;
         elevation_factor = 0.7f - position * 0.35f; // 70% down to 35% density
     }
-    else if (elevation <= params->grassLine)
+    else if (elevation <= params->grass_line)
     {
         // High grassland zone (1400-1500m) - meadows and sparse vegetation
-        float range = params->grassLine - params->bushLine;
-        float position = (elevation - params->bushLine) / range;
+        float range = params->grass_line - params->bush_line;
+        float position = (elevation - params->bush_line) / range;
         elevation_factor = 0.35f - position * 0.25f; // 35% down to 10% density
     }
     else
@@ -2709,14 +2709,14 @@ static uint8_t calculate_vegetation_density_temperate(float elevation, float slo
 
     // Slope factor - temperate vegetation more tolerant of slopes
     float slope_factor = 1.0f;
-    if (slope > params->maxSlope)
+    if (slope > params->max_slope)
     {
         slope_factor = 0.0f; // Too steep for vegetation
     }
     else if (slope > 30.0f)  // Start reducing at 30° (more tolerant than alpine)
     {
         // Gradual slope reduction: 30°-50° range
-        float slope_range = params->maxSlope - 30.0f;
+        float slope_range = params->max_slope - 30.0f;
         float slope_excess = slope - 30.0f;
         slope_factor = 1.0f - (slope_excess / slope_range) * 0.85f; // 85% reduction
     }
@@ -2731,19 +2731,19 @@ static uint8_t calculate_vegetation_density_temperate(float elevation, float slo
     if (aspect >= 135.0f && aspect <= 225.0f)
     {
         // South-facing slopes (135°-225°) - slightly drier
-        aspect_factor = 1.0f - params->aspectModifier * 0.8f;
+        aspect_factor = 1.0f - params->aspect_modifier * 0.8f;
     }
     else if (aspect >= 315.0f || aspect <= 45.0f)
     {
         // North-facing slopes (315°-45°) - slightly moister
-        aspect_factor = 1.0f + params->aspectModifier * 0.6f;
+        aspect_factor = 1.0f + params->aspect_modifier * 0.6f;
     }
 
     // Drainage factor - VERY important in temperate zones (wet lowlands vs dry ridges)
-    float drainage_factor = 1.0f + (drainage * params->drainageBonus);
+    float drainage_factor = 1.0f + (drainage * params->drainage_bonus);
 
     // Combine all factors
-    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor * params->densityScale;
+    float final_density = elevation_factor * slope_factor * aspect_factor * drainage_factor * params->density_scale;
 
     // Apply minimum threshold - no vegetation below 5% density
     if (final_density < 0.05f)
@@ -2763,8 +2763,8 @@ static uint8_t calculate_vegetation_density_temperate(float elevation, float slo
  * Generate vegetation mask PNG from heightmap data
  * Creates grayscale PNG where brightness represents vegetation density
  */
-static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int16_t *elevation_data,
-                                    const ProgramOptions *opts)
+static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const int16_t *elevation_data,
+                                    const program_options_t *opts)
 {
     if (!opts->vegetation.enabled)
     {
@@ -2776,16 +2776,16 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     char base_name[_MAX_PATH];
 
     // Extract base filename without extension
-    const char *last_dot = strrchr(fi->szFilename, '.');
+    const char *last_dot = strrchr(fi->filename, '.');
     if (last_dot)
     {
-        size_t base_len = last_dot - fi->szFilename;
-        strncpy(base_name, fi->szFilename, base_len);
+        size_t base_len = last_dot - fi->filename;
+        strncpy(base_name, fi->filename, base_len);
         base_name[base_len] = '\0';
     }
     else
     {
-        strcpy(base_name, fi->szFilename);
+        strcpy(base_name, fi->filename);
     }
 
     // Create mask filename with biome suffix
@@ -2797,43 +2797,43 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     {
         fprintf(stderr, "INFO: Generating vegetation mask: %s\n", mask_filename);
         fprintf(stderr, "INFO: Biome: %s, Elevation range: %.0f-%.0f meters\n",
-                biome_names[opts->biome], opts->vegetation.minElevation, opts->vegetation.maxElevation);
+                biome_names[opts->biome], opts->vegetation.min_elevation, opts->vegetation.max_elevation);
     }
 
-    float tileSouth = 0.0f, tileNorth = 0.0f, tileWest, tileEast;
-    int hasGeoBounds = extractGeoBounds(fi->szFilename, &tileSouth, &tileNorth, &tileWest, &tileEast);
-    int useAridity = opts->aridityPointCount > 0 && hasGeoBounds;
+    float tile_south = 0.0f, tile_north = 0.0f, tile_west, tile_east;
+    int has_geo_bounds = extract_geo_bounds(fi->filename, &tile_south, &tile_north, &tile_west, &tile_east);
+    int use_aridity = opts->aridity_point_count > 0 && has_geo_bounds;
 
-    if (opts->aridityPointCount > 0 && !hasGeoBounds)
+    if (opts->aridity_point_count > 0 && !has_geo_bounds)
     {
-        fprintf(stderr, "WARNING: Cannot derive latitude from filename %s, aridity ignored\n", fi->szFilename);
+        fprintf(stderr, "WARNING: Cannot derive latitude from filename %s, aridity ignored\n", fi->filename);
     }
 
-    if (opts->verbose && hasGeoBounds)
+    if (opts->verbose && has_geo_bounds)
     {
         fprintf(stderr, "INFO: Latitude range: %.4f (first row) to %.4f (last row)\n",
-                latitudeAtRow(tileSouth, tileNorth, 0, fi->iHeight),
-                latitudeAtRow(tileSouth, tileNorth, fi->iHeight - 1, fi->iHeight));
-        if (useAridity)
+                latitude_at_row(tile_south, tile_north, 0, fi->height),
+                latitude_at_row(tile_south, tile_north, fi->height - 1, fi->height));
+        if (use_aridity)
         {
             fprintf(stderr, "INFO: Aridity: %.3f (first row) to %.3f (last row)\n",
-                    aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
-                                 latitudeAtRow(tileSouth, tileNorth, 0, fi->iHeight)),
-                    aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
-                                 latitudeAtRow(tileSouth, tileNorth, fi->iHeight - 1, fi->iHeight)));
+                    aridity_at_lat(opts->aridity_points, opts->aridity_point_count,
+                                 latitude_at_row(tile_south, tile_north, 0, fi->height)),
+                    aridity_at_lat(opts->aridity_points, opts->aridity_point_count,
+                                 latitude_at_row(tile_south, tile_north, fi->height - 1, fi->height)));
         }
     }
 
     // Determine pixel pitch for slope calculations
     float pixel_pitch_meters = 90.0f; // Default SRTM-3
-    if (fi->srtmType == SRTM3)
+    if (fi->srtm_type == SRTM3)
     {
         pixel_pitch_meters = 30.0f; // SRTM-1
     }
 
     // The whole mask is computed first so threads never share a PNG row buffer and rows are written in order
-    uint8_t *maskData = (uint8_t *)safe_malloc_pixels(fi->iWidth, fi->iHeight, sizeof(uint8_t));
-    if (!maskData)
+    uint8_t *mask_data = (uint8_t *)safe_malloc_pixels(fi->width, fi->height, sizeof(uint8_t));
+    if (!mask_data)
     {
         fprintf(stderr, "ERROR: Cannot allocate vegetation mask buffer\n");
         return -1;
@@ -2843,7 +2843,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     FILE *fp = fopen(mask_filename, "wb");
     if (!fp)
     {
-        free(maskData);
+        free(mask_data);
         fprintf(stderr, "ERROR: Cannot create vegetation mask file %s\n", mask_filename);
         return -1;
     }
@@ -2851,7 +2851,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
     {
-        free(maskData);
+        free(mask_data);
         fclose(fp);
         fprintf(stderr, "ERROR: Cannot create PNG write structure\n");
         return -1;
@@ -2861,7 +2861,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     if (!info_ptr)
     {
         png_destroy_write_struct(&png_ptr, NULL);
-        free(maskData);
+        free(mask_data);
         fclose(fp);
         fprintf(stderr, "ERROR: Cannot create PNG info structure\n");
         return -1;
@@ -2870,7 +2870,7 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_write_struct(&png_ptr, &info_ptr);
-        free(maskData);
+        free(mask_data);
         fclose(fp);
         fprintf(stderr, "ERROR: PNG write error\n");
         return -1;
@@ -2879,44 +2879,44 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
     png_init_io(png_ptr, fp);
 
     // Set PNG headers for grayscale
-    png_set_IHDR(png_ptr, info_ptr, fi->iWidth, fi->iHeight, 8,
+    png_set_IHDR(png_ptr, info_ptr, fi->width, fi->height, 8,
                  PNG_COLOR_TYPE_GRAY, PNG_INTERLACE_NONE,
                  PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
     png_write_info(png_ptr, info_ptr);
 
     // Progress tracking
-    size_t progress_step = fi->iHeight / 20; // Update every 5%
+    size_t progress_step = fi->height / 20; // Update every 5%
     if (progress_step == 0)
         progress_step = 1;
 
 // Process each row
-#pragma omp parallel for schedule(dynamic, 1) if (opts->numThreads > 1)
-    for (size_t y = 0; y < fi->iHeight; y++)
+#pragma omp parallel for schedule(dynamic, 1) if (opts->num_threads > 1)
+    for (size_t y = 0; y < fi->height; y++)
     {
         // Progress indicator
         if (opts->verbose && (y % progress_step == 0))
         {
 #pragma omp critical
             {
-                fprintf(stderr, "\rProgress: %zu%% ", (y * 100) / fi->iHeight);
+                fprintf(stderr, "\rProgress: %zu%% ", (y * 100) / fi->height);
                 fflush(stderr);
             }
         }
 
         // Aridity depends only on the row, so the adjusted parameters are computed once per row
-        VegetationParams rowParams = opts->vegetation;
-        if (useAridity)
+        vegetation_params_t row_params = opts->vegetation;
+        if (use_aridity)
         {
-            float aridity = aridityAtLat(opts->aridityPoints, opts->aridityPointCount,
-                                         latitudeAtRow(tileSouth, tileNorth, y, fi->iHeight));
-            applyAridity(&rowParams, aridity);
+            float aridity = aridity_at_lat(opts->aridity_points, opts->aridity_point_count,
+                                         latitude_at_row(tile_south, tile_north, y, fi->height));
+            apply_aridity(&row_params, aridity);
         }
 
         // Process each pixel in row
-        for (size_t x = 0; x < fi->iWidth; x++)
+        for (size_t x = 0; x < fi->width; x++)
         {
-            size_t index = y * fi->iWidth + x;
+            size_t index = y * fi->width + x;
             int16_t elevation = elevation_data[index];
 
             uint8_t vegetation_density = 0;
@@ -2925,11 +2925,11 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
             if (elevation != NODATA_REPLACEMENT)
             {
                 // Calculate terrain analysis factors
-                float slope = calculate_slope_angle(elevation_data, fi->iWidth, fi->iHeight,
+                float slope = calculate_slope_angle(elevation_data, fi->width, fi->height,
                                                     x, y, pixel_pitch_meters);
-                float aspect = calculate_aspect_angle(elevation_data, fi->iWidth, fi->iHeight,
+                float aspect = calculate_aspect_angle(elevation_data, fi->width, fi->height,
                                                       x, y, pixel_pitch_meters);
-                float drainage = calculate_drainage_factor(elevation_data, fi->iWidth, fi->iHeight,
+                float drainage = calculate_drainage_factor(elevation_data, fi->width, fi->height,
                                                            x, y, 2);
 
                 // Calculate vegetation density based on biome
@@ -2937,21 +2937,21 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
                 {
                 case BIOME_ALPINE:
                     vegetation_density = calculate_vegetation_density_alpine(
-                        (float)elevation, slope, aspect, drainage, &rowParams);
+                        (float)elevation, slope, aspect, drainage, &row_params);
                     break;
                 case BIOME_TEMPERATE:
                     vegetation_density = calculate_vegetation_density_temperate(
-                        (float)elevation, slope, aspect, drainage, &rowParams);
+                        (float)elevation, slope, aspect, drainage, &row_params);
                     break;
                 // TODO: Add other biomes (tropical, desert, arctic)
                 default:
                     vegetation_density = calculate_vegetation_density_alpine(
-                        (float)elevation, slope, aspect, drainage, &rowParams);
+                        (float)elevation, slope, aspect, drainage, &row_params);
                     break;
                 }
             }
 
-            maskData[index] = vegetation_density;
+            mask_data[index] = vegetation_density;
         }
     }
 
@@ -2960,15 +2960,15 @@ static int generate_vegetation_mask(const struct tag_FileInfoSRTM *fi, const int
         fprintf(stderr, "\rProgress: 100%% \n");
     }
 
-    for (size_t y = 0; y < fi->iHeight; y++)
+    for (size_t y = 0; y < fi->height; y++)
     {
-        png_write_row(png_ptr, maskData + y * fi->iWidth);
+        png_write_row(png_ptr, mask_data + y * fi->width);
     }
 
     // Finalize PNG
     png_write_end(png_ptr, NULL);
     png_destroy_write_struct(&png_ptr, &info_ptr);
-    free(maskData);
+    free(mask_data);
     fclose(fp);
 
     if (opts->verbose)
