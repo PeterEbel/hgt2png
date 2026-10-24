@@ -201,4 +201,4 @@ Based on **European Alps ecological research**:
 4. **Aspect Effects**: Barry, R. G. (2008). Mountain Weather and Climate
 
 ---
-*HGT2PNG v1.1.0 - Professional Heightmap Converter with Vegetation Mask Generation*
+*HGT2PNG v1.5.2 - Professional Heightmap Converter with Vegetation Mask Generation*
