@@ -2806,17 +2806,20 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
     char mask_filename[_MAX_PATH];
     char base_name[_MAX_PATH];
 
-    // Extract base filename without extension
-    const char *last_dot = strrchr(fi->filename, '.');
+    // Extract base filename without directory and extension (the mask goes to the current directory like the heightmap)
+    const char *name_start = strrchr(fi->filename, '/');
+    name_start = name_start ? name_start + 1 : fi->filename;
+
+    const char *last_dot = strrchr(name_start, '.');
     if (last_dot)
     {
-        size_t base_len = last_dot - fi->filename;
-        strncpy(base_name, fi->filename, base_len);
+        size_t base_len = last_dot - name_start;
+        strncpy(base_name, name_start, base_len);
         base_name[base_len] = '\0';
     }
     else
     {
-        strcpy(base_name, fi->filename);
+        strcpy(base_name, name_start);
     }
 
     // Create mask filename with biome suffix
