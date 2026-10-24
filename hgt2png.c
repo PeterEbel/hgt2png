@@ -104,7 +104,7 @@ typedef enum
 // Vegetation Mask Parameters for different biomes
 typedef struct
 {
-    int enabled;          // Enable vegetation mask generation
+    int enabled;           // Enable vegetation mask generation
     float min_elevation;   // Minimum elevation for vegetation (meters)
     float max_elevation;   // Maximum elevation for vegetation (meters)
     float max_slope;       // Maximum slope angle for vegetation (degrees)
@@ -142,19 +142,19 @@ typedef struct
     int verbose;
     int show_help;
     int show_version;
-    int num_threads;                // Option for thread count
-    int output_16bit;               // Option for 16-bit PNG output
-    float gamma;                   // Gamma correction (default: 1.0)
+    int num_threads;                   // Option for thread count
+    int output_16bit;                  // Option for 16-bit PNG output
+    float gamma;                       // Gamma correction (default: 1.0)
     curve_type_t curve_type;           // Curve type (linear/log)
-    int min_height;                 // Minimum height for mapping (-1 = Auto)
-    int max_height;                 // Maximum height for mapping (-1 = Auto)
+    int min_height;                    // Minimum height for mapping (-1 = Auto)
+    int max_height;                    // Maximum height for mapping (-1 = Auto)
     metadata_format_t metadata_format; // Metadata format (none/json/txt)
-    int alpha_nodata;               // Option for transparent NoData pixels
-    vegetation_params_t vegetation;   // Vegetation mask parameters
-    biome_type_t biome;               // Selected biome type
-    size_t remove_islands;          // Min. island size in source pixels (0 = disabled)
+    int alpha_nodata;                  // Option for transparent NoData pixels
+    vegetation_params_t vegetation;    // Vegetation mask parameters
+    biome_type_t biome;                // Selected biome type
+    size_t remove_islands;             // Min. island size in source pixels (0 = disabled)
     aridity_point_t aridity_points[MAX_ARIDITY_POINTS]; // Control points sorted by latitude
-    int aridity_point_count;         // 0 = latitude aridity disabled
+    int aridity_point_count;            // 0 = latitude aridity disabled
 } program_options_t;
 
 // Threading structures for parallelization
@@ -240,8 +240,8 @@ typedef struct tag_file_info_srtm
     int16_t min_elevation; // Explicitly signed 16-bit for elevation values
     int16_t max_elevation; // Explicitly signed 16-bit for elevation values
     size_t filesize;
-    int srtm_type;           // Per-file SRTM type instead of global variable
-    int nodata_count;       // Number of NoData pixels for statistics
+    int srtm_type;         // Per-file SRTM type instead of global variable
+    int nodata_count;      // Number of NoData pixels for statistics
 } file_info_t, *p_file_info_t;
 
 file_info_t *fi;
@@ -1916,14 +1916,14 @@ static void init_default_options(program_options_t *opts)
     opts->show_version = 0;
     opts->num_threads = DEFAULT_NUM_THREADS; // New option for thread count
     opts->output_16bit = 0;                  // Default: 8-bit RGB output
-    opts->gamma = 1.0f;                     // Default: No gamma correction
+    opts->gamma = 1.0f;                      // Default: No gamma correction
     opts->curve_type = CURVE_LINEAR;         // Default: Linear curve
     opts->min_height = -1;                   // Auto-detection
     opts->max_height = -1;                   // Auto-detection
     opts->metadata_format = METADATA_NONE;   // Default: No metadata
     opts->alpha_nodata = 0;                  // Default: No transparent NoData pixels
     opts->remove_islands = 0;                // Default: Island removal disabled
-    opts->aridity_point_count = 0;            // Default: No aridity influence
+    opts->aridity_point_count = 0;           // Default: No aridity influence
 
     // Initialize vegetation mask parameters (disabled by default)
     opts->vegetation.enabled = 0;
@@ -2933,7 +2933,7 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
         {
 #pragma omp critical
             {
-                fprintf(stderr, "\rProgress: %zu%% ", (y * 100) / fi->height);
+                fprintf(stderr, "\rINFO: Progress: %zu%% ", (y * 100) / fi->height);
                 fflush(stderr);
             }
         }
@@ -2991,7 +2991,7 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
 
     if (opts->verbose)
     {
-        fprintf(stderr, "\rProgress: 100%% \n");
+        fprintf(stderr, "\rINFO: Progress: 100%% \n");
     }
 
     for (size_t y = 0; y < fi->height; y++)
