@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.5.1
+ * HGT2PNG - Professional Heightmap Converter v1.5.2
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -50,6 +50,9 @@
  ***                                   fixed corrupted vegetation masks with more than one thread
  *** 1.5.1   2026-10-23  Ebel          Aridity is applied before the density is clamped (keeps relief structure),
  ***                                   density reduction raised to 0.7
+ *** 1.5.2   2026-10-25  Ebel          --16bit --alpha-nodata keeps gray 0 under transparent NoData pixels
+ ***                                   (written with the low-level libpng API); the vegetation mask is
+ ***                                   written to the current directory like the heightmap
  **********************************************************************************
  */
 
@@ -104,7 +107,7 @@ typedef enum
 // Vegetation Mask Parameters for different biomes
 typedef struct
 {
-    int enabled;          // Enable vegetation mask generation
+    int enabled;           // Enable vegetation mask generation
     float min_elevation;   // Minimum elevation for vegetation (meters)
     float max_elevation;   // Maximum elevation for vegetation (meters)
     float max_slope;       // Maximum slope angle for vegetation (degrees)
@@ -142,19 +145,19 @@ typedef struct
     int verbose;
     int show_help;
     int show_version;
-    int num_threads;                // Option for thread count
-    int output_16bit;               // Option for 16-bit PNG output
-    float gamma;                   // Gamma correction (default: 1.0)
+    int num_threads;                   // Option for thread count
+    int output_16bit;                  // Option for 16-bit PNG output
+    float gamma;                       // Gamma correction (default: 1.0)
     curve_type_t curve_type;           // Curve type (linear/log)
-    int min_height;                 // Minimum height for mapping (-1 = Auto)
-    int max_height;                 // Maximum height for mapping (-1 = Auto)
+    int min_height;                    // Minimum height for mapping (-1 = Auto)
+    int max_height;                    // Maximum height for mapping (-1 = Auto)
     metadata_format_t metadata_format; // Metadata format (none/json/txt)
-    int alpha_nodata;               // Option for transparent NoData pixels
-    vegetation_params_t vegetation;   // Vegetation mask parameters
-    biome_type_t biome;               // Selected biome type
-    size_t remove_islands;          // Min. island size in source pixels (0 = disabled)
+    int alpha_nodata;                  // Option for transparent NoData pixels
+    vegetation_params_t vegetation;    // Vegetation mask parameters
+    biome_type_t biome;                // Selected biome type
+    size_t remove_islands;             // Min. island size in source pixels (0 = disabled)
     aridity_point_t aridity_points[MAX_ARIDITY_POINTS]; // Control points sorted by latitude
-    int aridity_point_count;         // 0 = latitude aridity disabled
+    int aridity_point_count;            // 0 = latitude aridity disabled
 } program_options_t;
 
 // Threading structures for parallelization
@@ -240,8 +243,8 @@ typedef struct tag_file_info_srtm
     int16_t min_elevation; // Explicitly signed 16-bit for elevation values
     int16_t max_elevation; // Explicitly signed 16-bit for elevation values
     size_t filesize;
-    int srtm_type;           // Per-file SRTM type instead of global variable
-    int nodata_count;       // Number of NoData pixels for statistics
+    int srtm_type;         // Per-file SRTM type instead of global variable
+    int nodata_count;      // Number of NoData pixels for statistics
 } file_info_t, *p_file_info_t;
 
 file_info_t *fi;
@@ -410,7 +413,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.5.1 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.5.2 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scale_factor, opts.detail_intensity, opts.noise_seed);
     }
@@ -815,22 +818,53 @@ static void write_png_16bit_grayscale(const char *filename, size_t width, size_t
 
 static void write_png_16bit_with_alpha(const char *filename, size_t width, size_t height, const rgba16_t *pixel_data)
 {
-    png_image image;
-
-    memset(&image, 0, sizeof image);
-
-    image.version = PNG_IMAGE_VERSION;
-    image.format = PNG_FORMAT_LINEAR_Y_ALPHA; // 16-bit Grayscale + Alpha
-    image.width = width;
-    image.height = height;
-
+    // The simplified libpng API treats linear gray+alpha as premultiplied and writes 65535 under alpha 0
     fprintf(stderr, "Info: Writing 16-bit RGBA %s\n", filename);
-    if (!png_image_write_to_file(&image, filename, 0 /*convert_to_8bit*/, (png_bytep)pixel_data, 0 /*row_stride*/, NULL /*colormap*/))
+
+    FILE *fp = fopen(filename, "wb");
+    if (!fp)
     {
-        fprintf(stderr, "Error: Writing %s: %s\n", filename, image.message);
+        fprintf(stderr, "Error: Writing %s: cannot open file\n", filename);
+        return;
     }
 
-    png_image_free(&image);
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    png_infop info_ptr = png_ptr ? png_create_info_struct(png_ptr) : NULL;
+    if (!png_ptr || !info_ptr)
+    {
+        fprintf(stderr, "Error: Writing %s: cannot create PNG structures\n", filename);
+        if (png_ptr)
+            png_destroy_write_struct(&png_ptr, NULL);
+        fclose(fp);
+        return;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr)))
+    {
+        fprintf(stderr, "Error: Writing %s: PNG write error\n", filename);
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        fclose(fp);
+        return;
+    }
+
+    png_init_io(png_ptr, fp);
+    png_set_IHDR(png_ptr, info_ptr, (png_uint_32)width, (png_uint_32)height, 16,
+                 PNG_COLOR_TYPE_GRAY_ALPHA, PNG_INTERLACE_NONE,
+                 PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    // Same gAMA/cHRM chunks as the simplified API writes for the other 16-bit outputs
+    png_set_gAMA_fixed(png_ptr, info_ptr, 100000);
+    png_set_cHRM_fixed(png_ptr, info_ptr, 31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000);
+    png_write_info(png_ptr, info_ptr);
+    png_set_swap(png_ptr); // PNG samples are big-endian
+
+    for (size_t y = 0; y < height; y++)
+    {
+        png_write_row(png_ptr, (png_bytep)(pixel_data + y * width));
+    }
+
+    png_write_end(png_ptr, NULL);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(fp);
 }
 
 // PARALLELIZATION - Worker thread function
@@ -1885,14 +1919,14 @@ static void init_default_options(program_options_t *opts)
     opts->show_version = 0;
     opts->num_threads = DEFAULT_NUM_THREADS; // New option for thread count
     opts->output_16bit = 0;                  // Default: 8-bit RGB output
-    opts->gamma = 1.0f;                     // Default: No gamma correction
+    opts->gamma = 1.0f;                      // Default: No gamma correction
     opts->curve_type = CURVE_LINEAR;         // Default: Linear curve
     opts->min_height = -1;                   // Auto-detection
     opts->max_height = -1;                   // Auto-detection
     opts->metadata_format = METADATA_NONE;   // Default: No metadata
     opts->alpha_nodata = 0;                  // Default: No transparent NoData pixels
     opts->remove_islands = 0;                // Default: Island removal disabled
-    opts->aridity_point_count = 0;            // Default: No aridity influence
+    opts->aridity_point_count = 0;           // Default: No aridity influence
 
     // Initialize vegetation mask parameters (disabled by default)
     opts->vegetation.enabled = 0;
@@ -1907,7 +1941,7 @@ static void init_default_options(program_options_t *opts)
 // Show help text
 static void show_help(const char *program_name)
 {
-    printf("hgt2png v1.5.1 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
+    printf("hgt2png v1.5.2 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", program_name);
 
@@ -1963,7 +1997,7 @@ static void show_help(const char *program_name)
 // Show version
 static void show_version(void)
 {
-    printf("hgt2png v1.5.1\n");
+    printf("hgt2png v1.5.2\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
     printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");
@@ -2775,17 +2809,20 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
     char mask_filename[_MAX_PATH];
     char base_name[_MAX_PATH];
 
-    // Extract base filename without extension
-    const char *last_dot = strrchr(fi->filename, '.');
+    // Extract base filename without directory and extension (the mask goes to the current directory like the heightmap)
+    const char *name_start = strrchr(fi->filename, '/');
+    name_start = name_start ? name_start + 1 : fi->filename;
+
+    const char *last_dot = strrchr(name_start, '.');
     if (last_dot)
     {
-        size_t base_len = last_dot - fi->filename;
-        strncpy(base_name, fi->filename, base_len);
+        size_t base_len = last_dot - name_start;
+        strncpy(base_name, name_start, base_len);
         base_name[base_len] = '\0';
     }
     else
     {
-        strcpy(base_name, fi->filename);
+        strcpy(base_name, name_start);
     }
 
     // Create mask filename with biome suffix
@@ -2899,7 +2936,7 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
         {
 #pragma omp critical
             {
-                fprintf(stderr, "\rProgress: %zu%% ", (y * 100) / fi->height);
+                fprintf(stderr, "\rINFO: Progress: %zu%% ", (y * 100) / fi->height);
                 fflush(stderr);
             }
         }
@@ -2957,7 +2994,7 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
 
     if (opts->verbose)
     {
-        fprintf(stderr, "\rProgress: 100%% \n");
+        fprintf(stderr, "\rINFO: Progress: 100%% \n");
     }
 
     for (size_t y = 0; y < fi->height; y++)
