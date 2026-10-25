@@ -11,3 +11,6 @@ hgt2png
 *.txt
 asc2hgt.c
 create_terrain.py
+*.blend
+__pycache__/
+*.pyc
