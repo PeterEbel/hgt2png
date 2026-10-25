@@ -8,12 +8,13 @@ OUTPUT_DIR = "/home/peter/Projekte/Topographie/Spanien/render"
 # Biom der Vegetationsmasken (Dateiname: <Kachel>_vegetation_<Biom>.png)
 VEGETATION_BIOME = "temperate"
 
-# Mix-Color-Node: Rampenposition (0..1) für Flächen ohne Vegetation (Maske = 0); 0.16 = Ocker, 0.35 = Hellbraun
+# Rampenposition (0..1) für niedrigste Flächen ohne Vegetation (Maske = 0); steigt dort mit der Höhe bis 1.0
 BARE_GROUND_VALUE = 0.2
 # ---------------------------------------------------------------------
 
 NODE_VEGETATION = "VegetationMask"
 NODE_MIX_COLOR = "VegetationMix"
+NODE_BARE_GROUND = "BareGroundRamp"
 FALLBACK_IMAGE = "vegetation_fallback_white"
 
 
@@ -77,8 +78,16 @@ def ensure_vegetation_setup(material, node_heightmap):
     mix_color.factor_mode = 'UNIFORM'
     mix_color.clamp_factor = True
 
+    # Kahler Boden: Höhe auf [BARE_GROUND_VALUE, 1] gestreckt, damit Hochlagen ohne Vegetation braun statt konstant ocker werden
+    bare = get_or_create(nodes, NODE_BARE_GROUND, 'ShaderNodeMath', (x + 150, y - 240))
+    bare.operation = 'MULTIPLY_ADD'
+    bare.use_clamp = True
+    bare.inputs[1].default_value = 1.0 - BARE_GROUND_VALUE
+    bare.inputs[2].default_value = BARE_GROUND_VALUE
+    link(links, node_heightmap.outputs["Color"], bare.inputs[0])
+
     # Mix-Color-Sockets über Index (Namen A/B existieren je Datentyp mehrfach): 0 Factor, 6 A (Color), 7 B (Color), Ausgang 2 Result (Color)
-    mix_color.inputs[6].default_value = (BARE_GROUND_VALUE, BARE_GROUND_VALUE, BARE_GROUND_VALUE, 1.0)
+    link(links, bare.outputs[0], mix_color.inputs[6])
 
     link(links, tex_coord.outputs["Generated"], node_vegetation.inputs["Vector"])
     link(links, node_vegetation.outputs["Color"], mix_color.inputs[0])
@@ -167,7 +176,7 @@ def process_all_tiles(input_dir, output_dir):
         # --- Heightmap laden ---
         try:
             heightmap_img = bpy.data.images.load(heightmap_path, check_existing=True)
-            heightmap_img.colorspace_settings.name = 'sRGB'
+            heightmap_img.colorspace_settings.name = 'Non-Color'
         except Exception as e:
             print(f"ERROR: Konnte Heightmap nicht laden: {e}")
             continue
@@ -175,6 +184,7 @@ def process_all_tiles(input_dir, output_dir):
         # --- Vegetationsmaske laden ---
         try:
             vegetation_img, vegetation_loaded = load_vegetation_mask(vegetation_path)
+            vegetation_img.colorspace_settings.name = 'Non-Color'
         except Exception as e:
             print(f"ERROR: Konnte Vegetationsmaske nicht laden: {e}")
             continue
@@ -187,7 +197,7 @@ def process_all_tiles(input_dir, output_dir):
 
         disp_texture = bpy.data.textures.new(texture_name, type='IMAGE')
         disp_texture.image = heightmap_img
-        disp_texture.image.colorspace_settings.name = 'sRGB'
+        disp_texture.image.colorspace_settings.name = 'Non-Color'
 
         displace.texture = disp_texture
 
