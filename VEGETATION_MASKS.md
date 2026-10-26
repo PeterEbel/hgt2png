@@ -91,16 +91,13 @@ grayscale_value = (uint8_t)(final_density × 255)
 
 ## Integration with Blender
 
-### Using with blender_dyer.py
-```python
-# Load terrain and create PBR material
-create_pbr_terrain_material(biome='alpine', use_advanced_mixing=True)
+### Batch rendering
+`scripts/render.py` builds the terrain material and uses the mask of each tile automatically, see [BLENDER_INTEGRATION.md](BLENDER_INTEGRATION.md).
 
-# The vegetation mask can be used as:
-# 1. Mix factor for material blending
-# 2. Density input for particle systems
-# 3. Weight map for geometry nodes
-```
+The vegetation mask can also be used as:
+1. Mix factor for material blending
+2. Density input for particle systems
+3. Weight map for geometry nodes
 
 ### Manual Blender Workflow
 1. Import heightmap PNG as Displacement modifier
