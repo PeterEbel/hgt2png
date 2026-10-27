@@ -1,4 +1,4 @@
-# 🔧 HGT2PNG v1.5.2 - Advanced Technical Reference
+# 🔧 HGT2PNG v1.5.3 - Advanced Technical Reference
 
 > **Note:** For basic usage and command options, see [README.md](README.md). This document covers advanced workflows and technical integration details.
 

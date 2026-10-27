@@ -1,5 +1,5 @@
 /*
- * HGT2PNG - Professional Heightmap Converter v1.5.2
+ * HGT2PNG - Professional Heightmap Converter v1.5.3
  *
  * Copyright (c) 2025 Peter Ebel <peter.ebel@outlook.de>
  *
@@ -53,6 +53,8 @@
  *** 1.5.2   2026-10-25  Ebel          --16bit --alpha-nodata keeps gray 0 under transparent NoData pixels
  ***                                   (written with the low-level libpng API); the vegetation mask is
  ***                                   written to the current directory like the heightmap
+ *** 1.5.3   2026-10-27  Ebel          render.py: optional --file renders a single heightmap;
+ ***                                   scripts/srtm-download.sh downloads SRTM1 tiles from NASA
  **********************************************************************************
  */
 
@@ -414,7 +416,7 @@ int main(int argc, char *argv[])
 
     if (opts.verbose)
     {
-        fprintf(stderr, "\nhgt2png Converter v1.5.2 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
+        fprintf(stderr, "\nhgt2png Converter v1.5.3 (C) 2025 - with Procedural Detail Generation and Multi-Biome Vegetation Masks\n");
         fprintf(stderr, "Scale Factor: %d, Detail Intensity: %.1f, Seed: %d\n",
                 opts.scale_factor, opts.detail_intensity, opts.noise_seed);
     }
@@ -1948,7 +1950,7 @@ static void init_default_options(program_options_t *opts)
 // Show help text
 static void show_help(const char *program_name)
 {
-    printf("hgt2png v1.5.2 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
+    printf("hgt2png v1.5.3 - HGT to PNG Heightmap Converter with Procedural Detail Generation and Multi-Biome Vegetation Masks\n\n");
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <input.hgt|filelist.txt>\n\n", program_name);
 
@@ -2004,7 +2006,7 @@ static void show_help(const char *program_name)
 // Show version
 static void show_version(void)
 {
-    printf("hgt2png v1.5.2\n");
+    printf("hgt2png v1.5.3\n");
     printf("Professional SRTM HGT to PNG Converter with Multi-Biome Vegetation Masks\n");
     printf("Features: OpenMP parallelization, procedural detail, Alpine + Temperate biomes\n");
     printf("Copyright (c) 2025 Peter Ebel. Licensed under MIT License.\n");

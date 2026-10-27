@@ -2,6 +2,7 @@
 
 Aufruf:
     blender spanien.blend --background --python render.py -- --samples 1000 --resolution 7202
+    blender spanien.blend --background --python render.py -- --file N37W006
 
 Die .blend-Datei muss nur World, Kamera und die Plane (subdivided, Modifier "Displace") enthalten.
 """
@@ -30,6 +31,8 @@ def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     p = argparse.ArgumentParser(description="Rendert Heightmap-Kacheln mit generiertem TerrainMaterial")
     p.add_argument("--input-dir", default=DEFAULT_INPUT_DIR)
+    p.add_argument("--file", default=None,
+                   help="Einzelne Heightmap (Name mit/ohne .png, relativ zu --input-dir); ohne Angabe werden alle gerendert")
     p.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     p.add_argument("--biome", default=DEFAULT_BIOME, help="Biom der Vegetationsmasken")
     p.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
@@ -173,8 +176,15 @@ def safe_remove(collection, item):
 
 
 def process_all_tiles(args):
-    files = sorted(f for f in os.listdir(args.input_dir)
-                   if f.endswith(".png") and "_vegetation_" not in f and not f.endswith("_render.png"))
+    if args.file:
+        name = os.path.basename(args.file)
+        files = [name if name.endswith(".png") else f"{name}.png"]
+        if not os.path.isfile(os.path.join(args.input_dir, files[0])):
+            print(f"ERROR: Heightmap nicht gefunden: {os.path.join(args.input_dir, files[0])}")
+            return
+    else:
+        files = sorted(f for f in os.listdir(args.input_dir)
+                       if f.endswith(".png") and "_vegetation_" not in f and not f.endswith("_render.png"))
     if not files:
         print("ERROR: Keine *.png Heightmap-Dateien gefunden!")
         return

@@ -1,5 +1,5 @@
 
-# HGT2PNG v1.5.2 - Professional SRTM Terrain Converter
+# HGT2PNG v1.5.3 - Professional SRTM Terrain Converter
 
 High-performance, OpenMP-optimized converter for SRTM HGT terrain data to PNG displacement maps with advanced procedural detail generation, **multi-biome vegetation mask generation** (Alpine + Temperate), and professional 3D workflow integration.
 
