@@ -60,8 +60,45 @@ if (( all )); then
     [[ -f "$LINKS_FILE" ]] || { echo "Linkliste nicht gefunden: $LINKS_FILE" >&2; exit 1; }
     mapfile -t urls < <(grep '^https' "$LINKS_FILE")
 elif [[ -n "$list_file" ]]; then
+    if [[ ! -f "$list_file" && -f "$SCRIPT_DIR/../$list_file" ]]; then
+        list_file="$SCRIPT_DIR/../$list_file"
+    fi
     [[ -f "$list_file" ]] || { echo "Datei nicht gefunden: $list_file" >&2; exit 1; }
-    mapfile -t urls < <(grep '^https' "$list_file")
+
+    declare -A url_by_tile=()
+    link_map_loaded=0
+
+    while IFS= read -r entry || [[ -n "$entry" ]]; do
+        entry="${entry%$'\r'}"
+        entry="${entry%%#*}"
+        read -r entry _ <<< "$entry"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == https://* ]]; then
+            urls+=("$entry")
+            continue
+        fi
+
+        if (( ! link_map_loaded )); then
+            [[ -f "$LINKS_FILE" ]] || { echo "Linkliste nicht gefunden: $LINKS_FILE" >&2; exit 1; }
+            while IFS= read -r link || [[ -n "$link" ]]; do
+                link="${link%$'\r'}"
+                [[ "$link" == https://* ]] || continue
+                link_file="${link##*/}"
+                tile="${link_file%%.SRTMGL1.hgt.zip}"
+                url_by_tile["${tile^^}"]="$link"
+            done < "$LINKS_FILE"
+            link_map_loaded=1
+        fi
+
+        name="${entry##*/}"
+        name="${name%%.*}"
+        name="${name^^}"
+        if [[ -n "${url_by_tile[$name]:-}" ]]; then
+            urls+=("${url_by_tile[$name]}")
+        else
+            echo "WARNUNG: Kein Link für $name gefunden" >&2
+        fi
+    done < "$list_file"
 else
     [[ -f "$LINKS_FILE" ]] || { echo "Linkliste nicht gefunden: $LINKS_FILE" >&2; exit 1; }
     for t in "${tiles[@]}"; do
