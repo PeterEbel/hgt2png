@@ -13,9 +13,9 @@ import sys
 import bpy
 
 # ----------------------- Standardwerte (per Argument überschreibbar) -----------------------
-DEFAULT_INPUT_DIR = "/home/peter/Projekte/Topographie/Spanien/maps"
-DEFAULT_OUTPUT_DIR = "/home/peter/Projekte/Topographie/Spanien/render"
-DEFAULT_BIOME = "temperate"
+DEFAULT_INPUT_DIR = "/home/peter/Projekte/Topographie/Balkan/maps"
+DEFAULT_OUTPUT_DIR = "/home/peter/Projekte/Topographie/Balkan/render"
+DEFAULT_BIOME = "alpine"
 DEFAULT_SAMPLES = 1000
 DEFAULT_RESOLUTION = 7202
 # Rampenposition (0..1) für niedrigste Flächen ohne Vegetation (Maske = 0); steigt dort mit der Höhe bis 1.0
@@ -79,13 +79,17 @@ def create_terrain_material(bare_ground):
     mix_shader.location = (943, 227)
 
     # --- Heightmap und Texturkoordinaten ---
-    tex_coord = nodes.new("ShaderNodeTexCoord")
-    tex_coord.location = (-754, -49)
+    # tex_coord = nodes.new("ShaderNodeTexCoord")
+    # tex_coord.location = (-754, -49)
+
+    uv_map = nodes.new("ShaderNodeUVMap")
+    uv_map.uv_map = "UVMap"
+    uv_map.location = (-754, -49)
 
     heightmap = nodes.new("ShaderNodeTexImage")
     heightmap.label = "Heightmap_color"
     heightmap.location = (-429, -10)
-    heightmap.extension = 'REPEAT'
+    heightmap.extension = 'EXTEND'
     heightmap.interpolation = 'Linear'
     heightmap.projection = 'FLAT'
 
@@ -119,21 +123,42 @@ def create_terrain_material(bare_ground):
     cr = ramp.color_ramp
     cr.color_mode = 'RGB'
     cr.interpolation = 'LINEAR'
-    cr.elements.remove(cr.elements[0])
+    
+    # Bestehende Elemente bis auf das erste sicher löschen
+    while len(cr.elements) > 1:
+        cr.elements.remove(cr.elements[-1])
+    
     stops = (
-        (0.2227272242307663, (0.17818601429462433, 0.3309002220630646, 0.10261856019496918, 1.0)),
-        (0.3227272033691406, (0.7076643705368042, 0.6198279857635498, 0.2310725450515747, 1.0)),
-        (0.5409092307090759, (0.7427607774734497, 0.518953800201416, 0.1612369865179062, 1.0)),
-        (1.0, (0.29288288950920105, 0.10079766064882278, 0.0, 1.0)),
+        (0.100, (0.045, 0.175, 0.004, 1.0)),
+        (0.377, (0.178, 0.332, 0.102, 1.0)),
+        (0.518, (0.708, 0.620, 0.231, 1.0)),
+        (0.655, (0.743, 0.519, 0.161, 1.0)),
+        (0.855, (0.512, 0.172, 0.021, 1.0)),
+        (0.968, (0.365, 0.123, 0.000, 1.0)),
+        (1.000, (0.737, 1.000, 1.000, 1.0)),
     )
+
+    # stops = (
+    #     (0.222, (0.178, 0.330, 0.102, 1.0)),
+    #     (0.322, (0.707, 0.619, 0.231, 1.0)),
+    #     (0.540, (0.742, 0.518, 0.161, 1.0)),
+    #     (1.0, (0.100, 0.100, 0.0, 1.0)),
+    # )
+
+    # Das verbleibende erste Element mit dem ersten Stop überschreiben
     cr.elements[0].position, cr.elements[0].color = stops[0][0], stops[0][1]
+
+    # Alle weiteren Stops hinzufügen
     for pos, color in stops[1:]:
         el = cr.elements.new(pos)
         el.color = color
 
     # --- Verbindungen ---
-    link(links, tex_coord.outputs["Generated"], heightmap.inputs["Vector"])
-    link(links, tex_coord.outputs["Generated"], vegetation.inputs["Vector"])
+    # link(links, tex_coord.outputs["Generated"], heightmap.inputs["Vector"])
+    # link(links, tex_coord.outputs["Generated"], vegetation.inputs["Vector"])
+
+    link(links, uv_map.outputs["UV"], heightmap.inputs["Vector"])
+    link(links, uv_map.outputs["UV"], vegetation.inputs["Vector"])
 
     link(links, heightmap.outputs["Color"], bare.inputs[0])
     # Mix-Sockets über Index (A/B existieren je Datentyp mehrfach): 0 Factor, 6 A (Color), 7 B (Color), Ausgang 2 Result (Color)
@@ -239,7 +264,12 @@ def process_all_tiles(args):
         safe_remove(bpy.data.textures, bpy.data.textures.get(texture_name))
         disp_texture = bpy.data.textures.new(texture_name, type='IMAGE')
         disp_texture.image = heightmap_img
+        disp_texture.extension = 'EXTEND'
+
+        displace.texture_coords = 'UV'
+        displace.uv_layer = "UVMap"
         displace.texture = disp_texture
+        # displace.show_render = False
 
         node_heightmap.image = heightmap_img
         node_vegetation.image = vegetation_img
