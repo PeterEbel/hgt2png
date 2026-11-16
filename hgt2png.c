@@ -1452,11 +1452,11 @@ static float get_pixel_distance(int srtm_type)
 {
     if (srtm_type == SRTM3)
     {
-        return 60.0f; // 2 * 30m for SRTM-1 (1201x1201)
+        return 180.0f; // 2 * 90m for SRTM-3 (1201x1201)
     }
     else if (srtm_type == SRTM1)
     {
-        return 180.0f; // 2 * 90m for SRTM-3 (3601x3601)
+        return 60.0f; // 2 * 30m for SRTM-1 (3601x3601)
     }
     else
     {
@@ -2343,11 +2343,11 @@ static void write_metadata_file(const char *png_filename, const program_options_
 
     // Calculate pixel pitch (meters per pixel)
     float pixel_pitch_meters = 30.0f; // Default SRTM-1
-    if (fi->srtm_type == SRTM1)
+    if (fi->srtm_type == SRTM3)
     {
         pixel_pitch_meters = 90.0f; // SRTM-3
     }
-    else if (fi->srtm_type == SRTM3)
+    else if (fi->srtm_type == SRTM1)
     {
         pixel_pitch_meters = 30.0f; // SRTM-1
     }
@@ -2872,9 +2872,24 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
 
     // Determine pixel pitch for slope calculations
     float pixel_pitch_meters = 90.0f; // Default SRTM-3
-    if (fi->srtm_type == SRTM3)
+    if (fi->srtm_type == SRTM1)
     {
         pixel_pitch_meters = 30.0f; // SRTM-1
+    }
+    else if (fi->srtm_type == SRTM3)
+    {
+        pixel_pitch_meters = 90.0f; // SRTM-3
+    }
+
+    if (opts->enable_detail && opts->scale_factor > 1)
+    {
+        size_t source_dimension = fi->srtm_type == SRTM3 ? 1201 : 3601;
+        if ((fi->srtm_type == SRTM3 || fi->srtm_type == SRTM1) &&
+            fi->width == source_dimension * (size_t)opts->scale_factor &&
+            fi->height == source_dimension * (size_t)opts->scale_factor)
+        {
+            pixel_pitch_meters /= (float)opts->scale_factor;
+        }
     }
 
     // The whole mask is computed first so threads never share a PNG row buffer and rows are written in order
