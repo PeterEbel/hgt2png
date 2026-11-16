@@ -331,8 +331,8 @@ static void *safe_malloc_pixels(size_t width, size_t height, size_t element_size
 }
 
 // New functions for Procedural Detail Generation
-static float simple_noise(int x, int y, int seed);
-static float fractal_noise(float x, float y, int octaves, float persistence, float scale, int seed);
+static float simple_noise(int x, int y, uint32_t seed);
+static float fractal_noise(float x, float y, int octaves, float persistence, float scale, uint32_t seed);
 static short int bilinear_interpolate(const short int *data, int width, int height, float x, float y);
 static float get_pixel_distance(int srtm_type);
 static float calculate_local_slope(const short int *data, int width, int height, float x, float y, int srtm_type);
@@ -343,7 +343,7 @@ static float latitude_at_row(float south, float north, size_t row, size_t height
 static float aridity_at_lat(const aridity_point_t *points, int count, float lat);
 static void apply_aridity(vegetation_params_t *params, float aridity);
 static void write_metadata_file(const char *png_filename, const program_options_t *opts, const struct tag_file_info_srtm *fi, int effective_min_height, int effective_max_height);
-static short int *add_procedural_detail(const short int *originalData, int originalWidth, int originalHeight, int scale_factor, float detail_intensity, int seed, int srtm_type, int flat_sea);
+static short int *add_procedural_detail(const short int *originalData, int originalWidth, int originalHeight, int scale_factor, float detail_intensity, uint32_t seed, int srtm_type, int flat_sea);
 static int remove_small_islands(int16_t *data, size_t width, size_t height, size_t min_pixels, size_t *removed_islands);
 
 // Functions for parallelization
@@ -1366,15 +1366,16 @@ static int process_files_sequential(struct tag_file_info_srtm *fi, int num_files
 // PROCEDURAL DETAIL GENERATION
 
 // Simple noise function (Perlin-like)
-static float simple_noise(int x, int y, int seed)
+static float simple_noise(int x, int y, uint32_t seed)
 {
-    int n = x + y * 57 + seed * 131;
+    uint32_t n = (uint32_t)x + (uint32_t)y * UINT32_C(57) + seed * UINT32_C(131);
     n = (n << 13) ^ n;
-    return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
+    uint32_t hash = n * (n * n * UINT32_C(15731) + UINT32_C(789221)) + UINT32_C(1376312589);
+    return 1.0f - (float)(hash & UINT32_C(0x7fffffff)) / 1073741824.0f;
 }
 
 // Bilinear interpolation for noise sampling (eliminates quantization)
-static float bilinear_noise_interpolate(float x, float y, int seed)
+static float bilinear_noise_interpolate(float x, float y, uint32_t seed)
 {
     int x0 = (int)floorf(x);
     int y0 = (int)floorf(y);
@@ -1393,7 +1394,7 @@ static float bilinear_noise_interpolate(float x, float y, int seed)
 }
 
 // Fractal noise for different detail levels (with sub-pixel precision)
-static float fractal_noise(float x, float y, int octaves, float persistence, float scale, int seed)
+static float fractal_noise(float x, float y, int octaves, float persistence, float scale, uint32_t seed)
 {
     float total = 0.0f;
     float frequency = scale;
@@ -1403,7 +1404,7 @@ static float fractal_noise(float x, float y, int octaves, float persistence, flo
     for (int i = 0; i < octaves; i++)
     {
         // Bilinear interpolation instead of integer casting eliminates quantization
-        total += bilinear_noise_interpolate(x * frequency, y * frequency, seed + i) * amplitude;
+        total += bilinear_noise_interpolate(x * frequency, y * frequency, seed + (uint32_t)i) * amplitude;
         max_value += amplitude;
         amplitude *= persistence;
         frequency *= 2.0f;
@@ -1660,7 +1661,7 @@ static int is_flat_sea(const short int *data, int width, int height, float x, fl
 
 // Main function for Procedural Detail Generation
 static short int *add_procedural_detail(const short int *originalData, int originalWidth, int originalHeight,
-                                      int scale_factor, float detail_intensity, int seed, int srtm_type, int flat_sea)
+                                      int scale_factor, float detail_intensity, uint32_t seed, int srtm_type, int flat_sea)
 {
 
     size_t new_width, new_height;
@@ -1718,8 +1719,8 @@ static short int *add_procedural_detail(const short int *originalData, int origi
             // Add procedural detail
             // Different noise octaves for different detail sizes
             float detail_noise_1 = fractal_noise(x * 0.005f, y * 0.005f, 3, 0.5f, 1.0f, seed);     // Large features
-            float detail_noise_2 = fractal_noise(x * 0.02f, y * 0.02f, 4, 0.6f, 1.0f, seed + 100); // Medium features
-            float detail_noise_3 = fractal_noise(x * 0.08f, y * 0.08f, 2, 0.4f, 1.0f, seed + 200); // Fine details
+            float detail_noise_2 = fractal_noise(x * 0.02f, y * 0.02f, 4, 0.6f, 1.0f, seed + UINT32_C(100)); // Medium features
+            float detail_noise_3 = fractal_noise(x * 0.08f, y * 0.08f, 2, 0.4f, 1.0f, seed + UINT32_C(200)); // Fine details
 
             float combined_noise = detail_noise_1 * 0.5f + detail_noise_2 * 0.3f + detail_noise_3 * 0.2f;
 
