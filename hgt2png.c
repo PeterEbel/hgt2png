@@ -2816,28 +2816,21 @@ static int generate_vegetation_mask(const struct tag_file_info_srtm *fi, const i
 
     // Create vegetation mask filename
     char mask_filename[_MAX_PATH];
-    char base_name[_MAX_PATH];
 
     // Extract base filename without directory and extension (the mask goes to the current directory like the heightmap)
     const char *name_start = strrchr(fi->filename, '/');
     name_start = name_start ? name_start + 1 : fi->filename;
 
     const char *last_dot = strrchr(name_start, '.');
-    if (last_dot)
-    {
-        size_t base_len = last_dot - name_start;
-        strncpy(base_name, name_start, base_len);
-        base_name[base_len] = '\0';
-    }
-    else
-    {
-        strcpy(base_name, name_start);
-    }
-
-    // Create mask filename with biome suffix
+    size_t base_len = last_dot ? (size_t)(last_dot - name_start) : strlen(name_start);
     const char *biome_names[] = {"alpine", "temperate", "tropical", "desert", "arctic"};
-    snprintf(mask_filename, sizeof(mask_filename), "%s_vegetation_%s.png",
-             base_name, biome_names[opts->biome]);
+    int filename_length = snprintf(mask_filename, sizeof(mask_filename), "%.*s_vegetation_%s.png",
+                                   (int)base_len, name_start, biome_names[opts->biome]);
+    if (filename_length < 0 || (size_t)filename_length >= sizeof(mask_filename))
+    {
+        fprintf(stderr, "WARNING: Vegetation mask filename is too long for %s; skipping mask\n", fi->filename);
+        return -1;
+    }
 
     if (opts->verbose)
     {
